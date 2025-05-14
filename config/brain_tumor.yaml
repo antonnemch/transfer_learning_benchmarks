@@ -1,0 +1,7 @@
+dataset: BrainTumorMRI
+model: resnet18
+batch_size: 32
+learning_rate: 0.001
+input_size: 224
+epochs: 50
+method: MELO
