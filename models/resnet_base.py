@@ -86,6 +86,9 @@ def resnet50_base(pretrained=True, num_classes=1000):
     model = ResNet(Bottleneck, [3, 4, 6, 3], num_classes=num_classes)
     if pretrained:
         state_dict = model_zoo.load_url(model_urls['resnet50'])
+        # Remove fc weights if shape mismatch is expected
+        state_dict.pop("fc.weight", None)
+        state_dict.pop("fc.bias", None)
         model.load_state_dict(state_dict, strict=False)
     return model
 

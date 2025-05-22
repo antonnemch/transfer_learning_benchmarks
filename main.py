@@ -1,50 +1,39 @@
-# test_dataset_stats.py
-# Loads all datasets using loaders.py and prints summary statistics
+# train_kaggle_adapters.py
+# Train ResNet-50 with ConvAdapters on Kaggle Brain MRI dataset
 
-from utils.loaders import (
-    load_kaggle_brain_mri,
-    load_isic,
-    load_pathmnist_npz
-)
-import os
 import torch
-from collections import Counter
+from torch import nn, optim
+from models.resnet_base import resnet50_base, add_adapters_to_resnet, freeze_encoder
+from utils.loaders import load_kaggle_brain_mri
+from utils.train_resnet import train_one_epoch, count_parameters, count_parameters_by_module
 
-# Provide paths to your datasets
+# Config
 kaggle_path = r"C:\Users\anton\Documents\Datasets\Kaggle Brain MRI"
-isic_image_dir = r"C:\Users\anton\Documents\Datasets\ISIC\Images"
-isic_label_csv = r"C:\Users\anton\Documents\Datasets\ISIC\ISIC2018_Task3_Training_GroundTruth.csv"
-pathmnist_npz = r"C:\Users\anton\Documents\Datasets\PathMNIST\pathmnist_224.npz"
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+num_epochs = 10
+batch_size = 32
+lr = 1e-3
 
-# Utility to count total samples in a DataLoader
-def count_loader_samples(loader):
-    return sum(len(batch[0]) for batch in loader)
+# Load dataset
+train_loader, val_loader, test_loader, num_classes = load_kaggle_brain_mri(kaggle_path, batch_size=batch_size)
 
-# Utility to count class occurrences
-def count_class_distribution(loader, num_classes):
-    class_counts = torch.zeros(num_classes, dtype=torch.int32)
-    for images, labels in loader:
-        for label in labels:
-            class_counts[label] += 1
-    return class_counts
+# Initialize model
+model = resnet50_base(pretrained=True, num_classes=num_classes)
+add_adapters_to_resnet(model, reduction=4)
+freeze_encoder(model)
+model.to(device)
 
-# Wrapper to summarize dataset
-def summarize(name, train_loader, val_loader, test_loader, num_classes):
-    print(f"\n--- {name} Dataset Summary ---")
-    print(f"Number of classes: {num_classes}")
-    print(f"Train samples: {count_loader_samples(train_loader)}")
-    print(f"Val samples:   {count_loader_samples(val_loader)}")
-    print(f"Test samples:  {count_loader_samples(test_loader)}")
+# Count parameters
+count_parameters(model)
+count_parameters_by_module(model)
 
-    print("Class distribution (train):")
-    print(count_class_distribution(train_loader, num_classes).tolist())
+# Optimizer (only trainable parameters)
+optimizer = optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=lr)
 
-# Load and summarize all three datasets
-train, val, test, n_cls = load_kaggle_brain_mri(kaggle_path)
-summarize("Kaggle Brain MRI", train, val, test, n_cls)
+# Train loop
+for epoch in range(num_epochs):
+    print(f"\nEpoch {epoch+1}/{num_epochs}")
+    train_one_epoch(model, train_loader, optimizer, device)
 
-train, val, test, n_cls = load_isic(isic_image_dir, isic_label_csv)
-summarize("ISIC", train, val, test, n_cls)
-
-train, val, test, n_cls = load_pathmnist_npz(pathmnist_npz)
-summarize("PathMNIST", train, val, test, n_cls)
+# Optional: save the model
+torch.save(model.state_dict(), "adapter_trained_resnet50.pth")

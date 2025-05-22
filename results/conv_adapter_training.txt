@@ -1,0 +1,46 @@
+Total parameters:     33,632,644
+Trainable parameters: 10,124,612
+Frozen parameters:    23,508,032
+
+--- Parameter breakdown by module ---
+conv1                | total: 9,408 | trainable: 0 
+bn1                  | total: 128 | trainable: 0 
+relu                 | total: 0 | trainable: 0 
+maxpool              | total: 0 | trainable: 0
+layer1               | total: 316,992 | trainable: 101,184
+layer2               | total: 1,751,552 | trainable: 531,968 
+layer3               | total: 10,267,136 | trainable: 3,168,768 
+layer4               | total: 21,279,232 | trainable: 6,314,496 
+avgpool              | total: 0 | trainable: 0 
+fc                   | total: 8,196 | trainable: 8,196 
+
+Epoch 1/10
+Train Loss: 0.4101, Accuracy: 0.8569
+
+Epoch 2/10
+Train Loss: 0.1592, Accuracy: 0.9497
+
+Epoch 3/10
+Train Loss: 0.0863, Accuracy: 0.9711
+
+Epoch 4/10
+Train Loss: 0.0873, Accuracy: 0.9695
+
+Epoch 5/10
+Train Loss: 0.0493, Accuracy: 0.9824
+
+Epoch 6/10
+Train Loss: 0.0473, Accuracy: 0.9838
+
+Epoch 7/10
+Train Loss: 0.0331, Accuracy: 0.9900
+
+Epoch 8/10
+Train Loss: 0.0250, Accuracy: 0.9924
+
+Epoch 9/10
+Train Loss: 0.0289, Accuracy: 0.9900
+
+Epoch 10/10
+Train Loss: 0.0451, Accuracy: 0.9884
+
