@@ -42,6 +42,8 @@ def count_parameters(model):
     print(f"Total parameters:     {total:,}")
     print(f"Trainable parameters: {trainable:,}")
     print(f"Frozen parameters:    {frozen:,}")
+    print(f"Trainable ratio:      {trainable / total:.2%}")
+    print(f"Frozen ratio:         {frozen / total:.2%}")
     return total, trainable, frozen
 
 def count_parameters_by_module(model):

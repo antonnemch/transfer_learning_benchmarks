@@ -13,7 +13,6 @@ __all__ = ['resnet50_base', 'ResNet', 'Bottleneck', 'add_adapters_to_resnet', 'f
 model_urls = {
     'resnet50': 'https://download.pytorch.org/models/resnet50-0676ba61.pth'
 }
-
 class Bottleneck(nn.Module):
     expansion = 4
 
@@ -28,20 +27,39 @@ class Bottleneck(nn.Module):
         self.relu = nn.ReLU(inplace=True)
         self.downsample = downsample
         self.adapter = None
+        self.adapter_in_channels = planes
 
     def forward(self, x):
         identity = x
-        out = self.relu(self.bn1(self.conv1(x)))
-        out = self.relu(self.bn2(self.conv2(out)))
-        out = self.bn3(self.conv3(out))
+        use_adapter_pre_conv2 = self.adapter is not None and self.conv2.stride == (1, 1)
+
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.relu(out)
+
+        if use_adapter_pre_conv2:
+            adapter_out = self.adapter(out)
+
+        out = self.conv2(out)
+        out = self.bn2(out)
+
+        # Add adapter only if spatial dimensions match
+        if self.adapter is not None:
+            if use_adapter_pre_conv2:
+                out = out + adapter_out
+            else:
+                out = out + self.adapter(out)
+
+        out = self.relu(out)
+        out = self.conv3(out)
+        out = self.bn3(out)
+
         if self.downsample is not None:
             identity = self.downsample(x)
+
         out += identity
         out = self.relu(out)
-        if self.adapter:
-            out = self.adapter(out)
         return out
-
 class ResNet(nn.Module):
     def __init__(self, block, layers, num_classes=1000):
         super().__init__()
@@ -98,7 +116,7 @@ def add_adapters_to_resnet(model, reduction=4):
     """
     for module in model.modules():
         if isinstance(module, Bottleneck):
-            module.adapter = ConvAdapter(in_channels=module.bn3.num_features, reduction=reduction)
+            module.adapter = ConvAdapter(in_channels=module.adapter_in_channels, reduction=reduction)
     return model
 
 def freeze_encoder(model):
