@@ -39,12 +39,13 @@ def summarize(name, train_loader, val_loader, test_loader, num_classes):
     print("Class distribution (train):")
     print(count_class_distribution(train_loader, num_classes).tolist())
 
-# Load and summarize all three datasets
-train, val, test, n_cls = load_kaggle_brain_mri(kaggle_path)
-summarize("Kaggle Brain MRI", train, val, test, n_cls)
+def sumarize_all(kaggle_path = r"C:\Users\anton\Documents\Datasets\Kaggle Brain MRI",isic_image_dir = r"C:\Users\anton\Documents\Datasets\ISIC\Images", isic_label_csv = r"C:\Users\anton\Documents\Datasets\ISIC\ISIC2018_Task3_Training_GroundTruth.csv", pathmnist_npz = r"C:\Users\anton\Documents\Datasets\PathMNIST\pathmnist_224.npz"):
+    # Load and summarize all three datasets
+    train, val, test, n_cls = load_kaggle_brain_mri(kaggle_path)
+    summarize("Kaggle Brain MRI", train, val, test, n_cls)
 
-train, val, test, n_cls = load_isic(isic_image_dir, isic_label_csv)
-summarize("ISIC", train, val, test, n_cls)
+    train, val, test, n_cls = load_isic(isic_image_dir, isic_label_csv)
+    summarize("ISIC", train, val, test, n_cls)
 
-train, val, test, n_cls = load_pathmnist_npz(pathmnist_npz)
-summarize("PathMNIST", train, val, test, n_cls)
+    train, val, test, n_cls = load_pathmnist_npz(pathmnist_npz)
+    summarize("PathMNIST", train, val, test, n_cls)
