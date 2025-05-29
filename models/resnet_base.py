@@ -6,7 +6,38 @@
 import torch
 import torch.nn as nn
 import torch.utils.model_zoo as model_zoo
+import copy
+
+
+try:
+    from lora_layers import Conv2d  # LoRA-enhanced convolution
+except ImportError:
+    Conv2d = None  # Fallback if LoRA not used
+
 from models.conv_adapter_module import ConvAdapter
+
+
+DEFAULT_LORA_CONFIG = {
+    "r": 16,
+    "lora_alpha": 32,
+    "lora_dropout": 0.0,
+    "merge_weights": True
+}
+
+def conv3x3(in_planes, out_planes, stride=1, groups=1, dilation=1, is_lora=False):
+    if is_lora and Conv2d:
+        return Conv2d(in_planes, out_planes, kernel_size=3, stride=stride, padding=dilation,
+                      groups=groups, dilation=dilation, bias=False, **DEFAULT_LORA_CONFIG)
+    else:
+        return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
+                         padding=dilation, groups=groups, dilation=dilation, bias=False)
+
+
+def conv1x1(in_planes, out_planes, stride=1, is_lora=False):
+    if is_lora and Conv2d:
+        return Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False, **DEFAULT_LORA_CONFIG)
+    else:
+        return nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False)
 
 __all__ = ['resnet50_base', 'ResNet', 'Bottleneck', 'add_adapters_to_resnet', 'freeze_encoder']
 
@@ -16,13 +47,13 @@ model_urls = {
 class Bottleneck(nn.Module):
     expansion = 4
 
-    def __init__(self, inplanes, planes, stride=1, downsample=None):
+    def __init__(self, inplanes, planes, stride=1, downsample=None,is_lora=False):
         super().__init__()
-        self.conv1 = nn.Conv2d(inplanes, planes, kernel_size=1, bias=False)
+        self.conv1 = conv1x1(inplanes, planes, is_lora=is_lora)
         self.bn1 = nn.BatchNorm2d(planes)
-        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
+        self.conv2 = conv3x3(planes, planes, stride=stride, is_lora=is_lora)
         self.bn2 = nn.BatchNorm2d(planes)
-        self.conv3 = nn.Conv2d(planes, planes * self.expansion, kernel_size=1, bias=False)
+        self.conv3 = conv1x1(planes, planes * self.expansion, is_lora=is_lora)
         self.bn3 = nn.BatchNorm2d(planes * self.expansion)
         self.relu = nn.ReLU(inplace=True)
         self.downsample = downsample
@@ -60,32 +91,36 @@ class Bottleneck(nn.Module):
         out += identity
         out = self.relu(out)
         return out
+    
 class ResNet(nn.Module):
-    def __init__(self, block, layers, num_classes=1000):
+    def __init__(self, block, layers, num_classes=1000, is_lora=False):
         super().__init__()
         self.inplanes = 64
         self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
         self.bn1 = nn.BatchNorm2d(64)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-        self.layer1 = self._make_layer(block, 64, layers[0])
-        self.layer2 = self._make_layer(block, 128, layers[1], stride=2)
-        self.layer3 = self._make_layer(block, 256, layers[2], stride=2)
-        self.layer4 = self._make_layer(block, 512, layers[3], stride=2)
+
+        self.layer1 = self._make_layer(block, 64, layers[0], is_lora=is_lora)
+        self.layer2 = self._make_layer(block, 128, layers[1], stride=2, is_lora=is_lora)
+        self.layer3 = self._make_layer(block, 256, layers[2], stride=2, is_lora=is_lora)
+        self.layer4 = self._make_layer(block, 512, layers[3], stride=2, is_lora=is_lora)
+
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.fc = nn.Linear(512 * block.expansion, num_classes)
 
-    def _make_layer(self, block, planes, blocks, stride=1):
+    def _make_layer(self, block, planes, blocks, stride=1, is_lora=False):
         downsample = None
         if stride != 1 or self.inplanes != planes * block.expansion:
             downsample = nn.Sequential(
-                nn.Conv2d(self.inplanes, planes * block.expansion, kernel_size=1, stride=stride, bias=False),
-                nn.BatchNorm2d(planes * block.expansion),
+                conv1x1(self.inplanes, planes * block.expansion, stride, is_lora=is_lora),
+                nn.BatchNorm2d(planes * block.expansion)
             )
-        layers = [block(self.inplanes, planes, stride, downsample)]
+
+        layers = [block(self.inplanes, planes, stride, downsample, is_lora=is_lora)]
         self.inplanes = planes * block.expansion
         for _ in range(1, blocks):
-            layers.append(block(self.inplanes, planes))
+            layers.append(block(self.inplanes, planes, is_lora=is_lora))
         return nn.Sequential(*layers)
 
     def forward(self, x):
@@ -100,14 +135,52 @@ class ResNet(nn.Module):
         x = self.fc(x)
         return x
 
-def resnet50_base(pretrained=True, num_classes=1000):
-    model = ResNet(Bottleneck, [3, 4, 6, 3], num_classes=num_classes)
+    def load_weight(self, state_dict):
+        if 'model_state_dict' in state_dict:
+            state_dict = state_dict['model_state_dict']
+        state_dict_tmp = copy.deepcopy(state_dict)
+
+        remap = {}
+        for key in list(state_dict_tmp.keys()):
+            if "conv1.weight" in key and key != "conv1.weight":
+                remap[key] = key.replace("conv1.weight", "conv1.conv.weight")
+            elif "conv2.weight" in key:
+                remap[key] = key.replace("conv2.weight", "conv2.conv.weight")
+            elif "conv3.weight" in key:
+                remap[key] = key.replace("conv3.weight", "conv3.conv.weight")
+            elif "conv1.bias" in key:
+                remap[key] = key.replace("conv1.bias", "conv1.conv.bias")
+            elif "conv2.bias" in key:
+                remap[key] = key.replace("conv2.bias", "conv2.conv.bias")
+            elif "conv3.bias" in key:
+                remap[key] = key.replace("conv3.bias", "conv3.conv.bias")
+            elif "downsample.0.weight" in key:
+                remap[key] = key.replace("downsample.0.weight", "downsample.0.conv.weight")
+
+        for old_key, new_key in remap.items():
+            state_dict_tmp[new_key] = state_dict_tmp.pop(old_key)
+
+        # Fill in missing keys from current model state (e.g., LoRA parameters)
+        current_state = self.state_dict()
+        for key in current_state:
+            if key not in state_dict_tmp:
+                state_dict_tmp[key] = current_state[key]
+
+        self.load_state_dict(state_dict_tmp, strict=False)
+
+
+
+def resnet50_base(pretrained=True, num_classes=1000, is_lora=False):
+    model = ResNet(Bottleneck, [3, 4, 6, 3], num_classes=num_classes, is_lora=is_lora)
     if pretrained:
         state_dict = model_zoo.load_url(model_urls['resnet50'])
         # Remove fc weights if shape mismatch is expected
         state_dict.pop("fc.weight", None)
         state_dict.pop("fc.bias", None)
-        model.load_state_dict(state_dict, strict=False)
+        if is_lora:
+            model.load_weight(state_dict)
+        else:
+            model.load_state_dict(state_dict, strict=False)
     return model
 
 def add_adapters_to_resnet(model, reduction=4):

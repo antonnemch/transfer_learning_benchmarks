@@ -1,6 +1,5 @@
 # train_kaggle_adapters.py
-# Train ResNet-50 with ConvAdapters on Kaggle Brain MRI dataset
-
+# Train ResNet-50 with Conv-Adapters on Kaggle Brain MRI dataset
 import torch
 from torch import nn, optim
 from models.resnet_base import resnet50_base, add_adapters_to_resnet, freeze_encoder

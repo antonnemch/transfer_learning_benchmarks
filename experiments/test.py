@@ -7,7 +7,7 @@ from PIL import Image
 import requests
 
 # Import your model
-from models.resnet_base import *
+from logs.resnet_base_old import *
 
 # ----------------------------------------------------------
 # MODEL SETUP

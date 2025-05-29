@@ -3,7 +3,7 @@
 
 import torch
 from torch import optim
-from models.resnet_base_lora import resnet50_base
+from models.resnet_base import resnet50_base
 from utils.loaders import load_kaggle_brain_mri
 from utils.train_resnet import train_one_epoch, count_parameters, count_parameters_by_module
 from utils.dataset_summarize import summarize
