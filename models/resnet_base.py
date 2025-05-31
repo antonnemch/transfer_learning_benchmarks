@@ -24,18 +24,18 @@ DEFAULT_LORA_CONFIG = {
     "merge_weights": True
 }
 
-def conv3x3(in_planes, out_planes, stride=1, groups=1, dilation=1, is_lora=False):
+def conv3x3(in_planes, out_planes, stride=1, groups=1, dilation=1, is_lora=False, lora_config=None):
     if is_lora and Conv2d:
         return Conv2d(in_planes, out_planes, kernel_size=3, stride=stride, padding=dilation,
-                      groups=groups, dilation=dilation, bias=False, **DEFAULT_LORA_CONFIG)
+                      groups=groups, dilation=dilation, bias=False, lora_config=lora_config)
     else:
         return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
                          padding=dilation, groups=groups, dilation=dilation, bias=False)
 
 
-def conv1x1(in_planes, out_planes, stride=1, is_lora=False):
+def conv1x1(in_planes, out_planes, stride=1, is_lora=False, lora_config=None):
     if is_lora and Conv2d:
-        return Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False, **DEFAULT_LORA_CONFIG)
+        return Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False, lora_config=lora_config)
     else:
         return nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False)
 
@@ -47,13 +47,14 @@ model_urls = {
 class Bottleneck(nn.Module):
     expansion = 4
 
-    def __init__(self, inplanes, planes, stride=1, downsample=None,is_lora=False):
+    def __init__(self, inplanes, planes, stride=1, downsample=None,is_lora=False, lora_config=None):
         super().__init__()
-        self.conv1 = conv1x1(inplanes, planes, is_lora=is_lora)
+        self.lora_config = lora_config or DEFAULT_LORA_CONFIG
+        self.conv1 = conv1x1(inplanes, planes, is_lora=is_lora,lora_config=self.lora_config)
         self.bn1 = nn.BatchNorm2d(planes)
-        self.conv2 = conv3x3(planes, planes, stride=stride, is_lora=is_lora)
+        self.conv2 = conv3x3(planes, planes, stride=stride, is_lora=is_lora, lora_config=self.lora_config)
         self.bn2 = nn.BatchNorm2d(planes)
-        self.conv3 = conv1x1(planes, planes * self.expansion, is_lora=is_lora)
+        self.conv3 = conv1x1(planes, planes * self.expansion, is_lora=is_lora,lora_config=self.lora_config)
         self.bn3 = nn.BatchNorm2d(planes * self.expansion)
         self.relu = nn.ReLU(inplace=True)
         self.downsample = downsample
@@ -93,23 +94,24 @@ class Bottleneck(nn.Module):
         return out
     
 class ResNet(nn.Module):
-    def __init__(self, block, layers, num_classes=1000, is_lora=False):
+    def __init__(self, block, layers, num_classes=1000, is_lora=False, lora_config=None):
         super().__init__()
+        self.lora_config = lora_config or DEFAULT_LORA_CONFIG
         self.inplanes = 64
         self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
         self.bn1 = nn.BatchNorm2d(64)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
 
-        self.layer1 = self._make_layer(block, 64, layers[0], is_lora=is_lora)
-        self.layer2 = self._make_layer(block, 128, layers[1], stride=2, is_lora=is_lora)
-        self.layer3 = self._make_layer(block, 256, layers[2], stride=2, is_lora=is_lora)
-        self.layer4 = self._make_layer(block, 512, layers[3], stride=2, is_lora=is_lora)
+        self.layer1 = self._make_layer(block, 64, layers[0], is_lora=is_lora, lora_config=self.lora_config)
+        self.layer2 = self._make_layer(block, 128, layers[1], stride=2, is_lora=is_lora, lora_config=self.lora_config)
+        self.layer3 = self._make_layer(block, 256, layers[2], stride=2, is_lora=is_lora, lora_config=self.lora_config)
+        self.layer4 = self._make_layer(block, 512, layers[3], stride=2, is_lora=is_lora, lora_config=self.lora_config)
 
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.fc = nn.Linear(512 * block.expansion, num_classes)
 
-    def _make_layer(self, block, planes, blocks, stride=1, is_lora=False):
+    def _make_layer(self, block, planes, blocks, stride=1, is_lora=False, lora_config=None):
         downsample = None
         if stride != 1 or self.inplanes != planes * block.expansion:
             downsample = nn.Sequential(
@@ -117,10 +119,10 @@ class ResNet(nn.Module):
                 nn.BatchNorm2d(planes * block.expansion)
             )
 
-        layers = [block(self.inplanes, planes, stride, downsample, is_lora=is_lora)]
+        layers = [block(self.inplanes, planes, stride, downsample, is_lora=is_lora, lora_config=self.lora_config)]
         self.inplanes = planes * block.expansion
         for _ in range(1, blocks):
-            layers.append(block(self.inplanes, planes, is_lora=is_lora))
+            layers.append(block(self.inplanes, planes, is_lora=is_lora, lora_config=self.lora_config))
         return nn.Sequential(*layers)
 
     def forward(self, x):
@@ -135,7 +137,7 @@ class ResNet(nn.Module):
         x = self.fc(x)
         return x
 
-    def load_weight(self, state_dict):
+    def load_weight_lora(self, state_dict):
         if 'model_state_dict' in state_dict:
             state_dict = state_dict['model_state_dict']
         state_dict_tmp = copy.deepcopy(state_dict)
@@ -170,33 +172,21 @@ class ResNet(nn.Module):
 
 
 
-def resnet50_base(pretrained=True, num_classes=1000, is_lora=False):
-    model = ResNet(Bottleneck, [3, 4, 6, 3], num_classes=num_classes, is_lora=is_lora)
+def resnet50_base(pretrained=True, num_classes=1000, is_lora=False,  lora_config=None):
+    model = ResNet(Bottleneck, [3, 4, 6, 3], num_classes=num_classes, is_lora=is_lora, lora_config=lora_config)
     if pretrained:
         state_dict = model_zoo.load_url(model_urls['resnet50'])
         # Remove fc weights if shape mismatch is expected
         state_dict.pop("fc.weight", None)
         state_dict.pop("fc.bias", None)
         if is_lora:
-            model.load_weight(state_dict)
+            model.load_weight_lora(state_dict)
         else:
             model.load_state_dict(state_dict, strict=False)
     return model
 
-def add_adapters_to_resnet(model, reduction=4):
-    """
-    Adds ConvAdapters to each Bottleneck block of a ResNet model in-place.
-    """
-    for module in model.modules():
-        if isinstance(module, Bottleneck):
-            module.adapter = ConvAdapter(in_channels=module.adapter_in_channels, reduction=reduction)
-    return model
 
-def freeze_encoder(model):
-    """
-    Freezes all ResNet weights except for adapters and the final classification head.
-    """
-    for name, param in model.named_parameters():
-        if 'adapter' not in name and 'fc' not in name:
-            param.requires_grad = False
+def initialize_basic_model(num_classes, device):
+    model = resnet50_base(pretrained=True, num_classes=num_classes, is_lora=False)
+    model.to(device)
     return model

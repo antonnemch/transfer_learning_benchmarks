@@ -3,4 +3,4 @@ __pycache__/
 *.pyc
 logs/
 saved_models/
-config/
+z_misc/

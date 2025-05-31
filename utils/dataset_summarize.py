@@ -1,7 +1,7 @@
 # test_dataset_stats.py
 # Loads all datasets using loaders.py and prints summary statistics
 
-from utils.loaders import (
+from utils.dataset_loaders import (
     load_kaggle_brain_mri,
     load_isic,
     load_pathmnist_npz
