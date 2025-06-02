@@ -29,7 +29,7 @@ def get_optimizer(model, now_lr):
     ])
 
 
-def train_meta_step(inputs, labels, model, meta_model, now_lr, meta_loader, optimizer, criterion, epoch, hyper_lr=0.1, batch_idx=None, num_batches=None):
+def train_meta_step(inputs, labels, model, meta_model, now_lr, meta_loader, optimizer, criterion, epoch, logger=None, hyper_lr=0.1, batch_idx=None, num_batches=None):
 
     # Step 1: Clone model into meta_model
     meta_model = resnet50_base(pretrained=False, num_classes=model.fc.out_features).to(inputs.device)
@@ -87,8 +87,11 @@ def train_meta_step(inputs, labels, model, meta_model, now_lr, meta_loader, opti
     loss.backward()
     optimizer.step()
 
-    # Optional logging
+    if logger:
+        logger.log_metalr_lrs(new_lr)
+
     if batch_idx is not None and num_batches is not None:
         print(f"Epoch {epoch}, Batch {batch_idx+1}/{num_batches} | Loss: {loss.item():.4f} | MetaLoss: {loss_meta.item():.4f}")
+
 
     return loss, outputs, new_lr

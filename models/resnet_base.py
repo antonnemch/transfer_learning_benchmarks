@@ -14,8 +14,6 @@ try:
 except ImportError:
     Conv2d = None  # Fallback if LoRA not used
 
-from models.conv_adapter_module import ConvAdapter
-
 
 DEFAULT_LORA_CONFIG = {
     "r": 16,

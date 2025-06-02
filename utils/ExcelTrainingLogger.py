@@ -4,7 +4,7 @@ from datetime import datetime
 from sklearn.metrics import confusion_matrix
 
 class ExcelTrainingLogger:
-    def __init__(self, base_dir="logs", model_name="model"):
+    def __init__(self, base_dir="results", model_name="model"):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.model_name = model_name
         self.timestamp = timestamp
@@ -24,7 +24,7 @@ class ExcelTrainingLogger:
 
     def log_param_counts(self, model):
         total, trainable, frozen = 0, 0, 0
-        for name, module in model.named_modules():
+        for name, module in model.named_children():
             mod_total = mod_train = mod_frozen = 0
             for p in module.parameters(recurse=False):
                 count = p.numel()

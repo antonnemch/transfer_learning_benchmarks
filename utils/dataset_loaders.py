@@ -12,7 +12,7 @@ import numpy as np
 # -------------------------------
 # 1. Load Kaggle Brain MRI Dataset (ImageFolder format)
 # -------------------------------
-def load_kaggle_brain_mri(root_dir, batch_size=32, split_ratio=0.8):
+def load_kaggle_brain_mri(root_dir, batch_size=32, subset_fraction=1.0, split_ratio=0.8):
     transform = transforms.Compose([
         transforms.Resize(256),
         transforms.CenterCrop(224),
@@ -20,39 +20,23 @@ def load_kaggle_brain_mri(root_dir, batch_size=32, split_ratio=0.8):
         transforms.Normalize(mean=[0.485, 0.456, 0.406],
                              std=[0.229, 0.224, 0.225])
     ])
+
     dataset = datasets.ImageFolder(root=root_dir, transform=transform)
-    num_classes = len(dataset.classes)
+
+    if subset_fraction < 1.0:
+        subset_size = int(len(dataset) * subset_fraction)
+        dataset, _ = random_split(dataset, [subset_size, len(dataset) - subset_size])
+
     train_size = int(split_ratio * 0.8 * len(dataset))
     val_size = int(split_ratio * 0.2 * len(dataset))
     test_size = len(dataset) - train_size - val_size
     train_set, val_set, test_set = random_split(dataset, [train_size, val_size, test_size])
-    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False)
-    test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False)
-    return train_loader, val_loader, test_loader, num_classes
-
-
-def load_kaggle_brain_mri_subset(root_dir, batch_size=32, subset_fraction=0.5, split_ratio=0.8):
-    transform = transforms.Compose([
-        transforms.Resize(256),
-        transforms.CenterCrop(224),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                             std=[0.229, 0.224, 0.225])
-    ])
-    dataset = datasets.ImageFolder(root=root_dir, transform=transform)
-    subset_size = int(len(dataset) * subset_fraction)
-    subset, _ = random_split(dataset, [subset_size, len(dataset) - subset_size])
-
-    train_size = int(split_ratio * 0.8 * len(subset))
-    val_size = int(split_ratio * 0.2 * len(subset))
-    test_size = len(subset) - train_size - val_size
-    train_set, val_set, test_set = random_split(subset, [train_size, val_size, test_size])
 
     train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False)
     test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False)
-    num_classes = len(dataset.classes)
+
+    num_classes = len(dataset.dataset.classes if hasattr(dataset, 'dataset') else dataset.classes)
     return train_loader, val_loader, test_loader, num_classes
 
 
