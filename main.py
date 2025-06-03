@@ -1,76 +1,119 @@
-# train_kaggle_adapters.py
-# Train ResNet-50 with Conv-Adapters on Kaggle Brain MRI dataset
+import itertools
 import torch
 from torch import nn, optim
-from models.resnet_base import resnet50_base, add_adapters_to_resnet, freeze_encoder
-from utils.loaders import load_kaggle_brain_mri
-from utils.train_resnet import train_one_epoch, count_parameters, count_parameters_by_module
-from utils.dataset_summarize import summarize
-import os
+from train import train_models
+from utils.dataset_loaders import load_kaggle_brain_mri
+from utils.dataset_summarize import summarize_log
 
-def evaluate_model(model, dataloader, device):
-    model.eval()
-    correct = 0
-    total = 0            
-    with torch.no_grad():
-        for images, labels in dataloader:
-            images, labels = images.to(device), labels.to(device)
-            outputs = model(images)
-            preds = outputs.argmax(dim=1)
-            correct += (preds == labels).sum().item()
-            total += labels.size(0)
-    accuracy = correct / total
-    return accuracy
+# === Load dataset ===
+kaggle_path = r"C:\Users\anton\Documents\Datasets\Kaggle Brain MRI"
 
-def initialize_model(num_classes, device, reduction):
-    model = resnet50_base(pretrained=True, num_classes=num_classes)
-    add_adapters_to_resnet(model, reduction=reduction)
-    freeze_encoder(model)
-    model.to(device)
-    return model
+# === Models to run ===
+run_models = {
+    'fft': True,
+    'metalr': True,
+    'conv_adapters': True,
+    'lora': True
+}
 
-def train_adapters_on_kaggle_bmri(
-    kaggle_path,
-    batch_size=32,
-    num_epochs=5,
-    lr=1e-3,
-    reduction=64,
-    save_dir="."
-):
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# === Define hyperparameter search space ===
+hyperparams = {
+    'lr': [1e-3, 1e-1],
+    'num_epochs': [30],
+    'batch_size': [64, 32],
+    'data_subset': [0.05, 0.2, 0.5, 1],
+    'hyper_lr': [1e-1, 1e-3],
+    'reduction': [64, 32],
+    'r': [64, 32, 16, 8],
+    'lora_alpha': [64, 32, 16, 8]
+}
 
-    # Load dataset
-    train_loader, val_loader, test_loader, num_classes = load_kaggle_brain_mri(kaggle_path, batch_size=batch_size)
-    summarize("Kaggle Brain MRI", train_loader, val_loader, test_loader, num_classes)
+# === Define hyperparameter search space for testing ===
+hyperparams = {
+    'lr': [1e-1],
+    'num_epochs': [1],
+    'batch_size': [128,64],
+    'data_subset': [0.005],
+    'hyper_lr': [1e-1],
+    'reduction': [128],
+    'r': [64],
+    'lora_alpha': [64]
+}
 
-    # Initialize model
-    model = initialize_model(num_classes, device, reduction=reduction)
+# === Fixed settings ===
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+criterion = nn.CrossEntropyLoss()
 
-    # Inspect parameter layout
-    count_parameters(model)
-    count_parameters_by_module(model)
+# === Param relevance mapping per model ===
+model_param_map = {
+    "fft": {"lr", "num_epochs", "batch_size", "data_subset"},
+    "metalr": {"lr", "hyper_lr", "num_epochs", "batch_size", "data_subset"},
+    "conv_adapters": {"lr", "reduction", "num_epochs", "batch_size", "data_subset"},
+    "lora": {"lr", "r", "lora_alpha", "num_epochs", "batch_size", "data_subset"}
+}
 
-    # Optimizer
-    optimizer = optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=lr)
+# === Precompute total number of configurations across all models ===
+total_experiments = 0
+exp_i = 0
+for model_name, should_run in run_models.items():
+    if not should_run:
+        continue
+    relevant_params = model_param_map[model_name]
+    param_counts = [len(hyperparams[p]) for p in relevant_params]
+    model_total = 1
+    for count in param_counts:
+        model_total *= count
+    total_experiments += model_total
 
-    # Training loop
-    for epoch in range(num_epochs):
-        print(f"\nEpoch {epoch+1}/{num_epochs}")
-        train_one_epoch(model, train_loader, optimizer, device)
+print(f"\n=== TOTAL EXPERIMENTS TO RUN: {total_experiments} ===\n")
 
-        val_acc = evaluate_model(model, val_loader, device)
-        print(f"Validation Accuracy: {val_acc:.4f}")
+# === Ensure reproducible dataset splits across all models and configs ===
+torch.manual_seed(42)
 
-    # Final evaluation
-    test_acc = evaluate_model(model, test_loader, device)
-    print(f"Test Accuracy: {test_acc:.4f}")
+# === Run model-specific grid searches ===
+for model_name, should_run in run_models.items():
+    if not should_run:
+        continue
+       
+    relevant_params = sorted(model_param_map[model_name]) 
+    # {"lr", "r", "lora_alpha", "num_epochs", "batch_size", "data_subset"}
+    param_values = [hyperparams[p] for p in relevant_params]
+    param_names = relevant_params
+    model_param_combinations = [dict(zip(param_names, combination)) for combination in itertools.product(*param_values)]
 
-    # Save model with hyperparameters in name
-    filename = f"resnet50_adapters_bs{batch_size}_lr{lr}_red{reduction}_ep{num_epochs}.pth"
-    save_path = os.path.join(save_dir, filename)
-    torch.save(model.state_dict(), save_path)
-    print(f"Model saved to {save_path}")
+    total_configs = len(model_param_combinations)
 
-if __name__ == "__main__":
-    kaggle_path = r"C:\Users\anton\Documents\Datasets\Kaggle Brain MRI"
-    train_adapters_on_kaggle_bmri(kaggle_path)
+    for i, config in enumerate(model_param_combinations):
+        config['seed'] = 42
+        exp_i += 1 
+        print(f"\n[{model_name.upper()}] (Exp. {exp_i}/{total_experiments}) Config {i+1}/{total_configs}: {config}")
+
+        train_loader, val_loader, test_loader, num_classes = load_kaggle_brain_mri(
+            kaggle_path,
+            batch_size=config['batch_size'],
+            subset_fraction=config['data_subset']
+        )
+        dataset_summary = summarize_log("Kaggle Brain MRI", train_loader, val_loader, test_loader, num_classes)
+        optimizer_class = optim.Adam
+
+        train_models(
+            run_fft=(model_name == "fft"),
+            run_metalr=(model_name == "metalr"),
+            run_conv_adapters=(model_name == "conv_adapters"),
+            run_lora=(model_name == "lora"),
+            num_classes=num_classes,
+            train_loader=train_loader,
+            val_loader=val_loader,
+            test_loader=test_loader,
+            criterion=criterion,
+            optimizer=optimizer_class,
+            device=device,
+            num_epochs=config['num_epochs'],
+            lr=config['lr'],
+            hyper_lr=config.get('hyper_lr', 0.1),
+            reduction=config.get('reduction', 64),
+            r=config.get('r', 16),
+            lora_alpha=config.get('lora_alpha', 32),
+            config=config,
+            dataset_summary=dataset_summary
+        )
