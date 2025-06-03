@@ -69,23 +69,28 @@ class ExcelTrainingLogger:
 
     def log_epoch_metrics(self, epoch, loss, acc, time_sec, gpu_mem_bytes):
         self.epoch_metrics.append({
-            "epoch": epoch,
+            "epoch": epoch+1,  # Epochs are 0-indexed in training but 1-indexed in logging
             "loss": loss,
             "accuracy": acc,
             "time_sec": round(time_sec, 2),
             "gpu_mem_mb": round(gpu_mem_bytes / 1024 / 1024, 2)
         })
 
-    def log_batch_metrics(self, epoch, batch_idx, loss, acc):
+    def log_batch_metrics(self, epoch, batch_idx, loss, acc, meta_loss="N/A"):
         self.batch_metrics.append({
-            "epoch": epoch,
-            "batch": batch_idx,
+            "epoch": epoch  + 1,  # Epochs are 0-indexed in training but 1-indexed in logging
+            "batch": batch_idx  + 1,  # Batches are 0-indexed in training but 1-indexed in logging
             "loss": loss,
-            "accuracy": acc
+            "accuracy": acc,
+            "metaLoss": meta_loss  # Placeholder for MetaLR loss if needed
         })
 
-    def log_metalr_lrs(self, lrs):
-        self.meta_lrs.append(lrs)
+    def log_metalr_lrs(self, epoch, batch, lrs):
+        self.meta_lrs.append({
+        "epoch": epoch,
+        "batch": batch,
+        **{f"lr_{i}": val for i, val in enumerate(lrs)}
+    })
 
     def save(self):
         with pd.ExcelWriter(self.path) as writer:

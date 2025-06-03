@@ -3,6 +3,7 @@ import torch
 from torch import nn, optim
 from train import train_models
 from utils.dataset_loaders import load_kaggle_brain_mri
+from utils.dataset_summarize import summarize_log
 
 # === Load dataset ===
 kaggle_path = r"C:\Users\anton\Documents\Datasets\Kaggle Brain MRI"
@@ -17,51 +18,102 @@ run_models = {
 
 # === Define hyperparameter search space ===
 hyperparams = {
-    'lr': [1e-3],
-    'hyper_lr': [1e-1],
-    'reduction': [64],
-    'r': [16],
-    'lora_alpha': [32],
+    'lr': [1e-3, 1e-1],
+    'num_epochs': [30],
+    'batch_size': [64, 32],
+    'data_subset': [0.05, 0.2, 0.5, 1],
+    'hyper_lr': [1e-1, 1e-3],
+    'reduction': [64, 32],
+    'r': [64, 32, 16, 8],
+    'lora_alpha': [64, 32, 16, 8]
+}
+
+# === Define hyperparameter search space for testing ===
+hyperparams = {
+    'lr': [1e-1],
     'num_epochs': [1],
-    'batch_size': [32]
+    'batch_size': [128,64],
+    'data_subset': [0.005],
+    'hyper_lr': [1e-1],
+    'reduction': [128],
+    'r': [64],
+    'lora_alpha': [64]
 }
 
 # === Fixed settings ===
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 criterion = nn.CrossEntropyLoss()
 
-# === Generate all combinations ===
-keys, values = zip(*hyperparams.items())
-param_grid = [dict(zip(keys, v)) for v in itertools.product(*values)]
-print("\n=== Grid Search Configurations ===")
-for i, config in enumerate(param_grid):
-    print(f"{i+1:>2}: {config}")
+# === Param relevance mapping per model ===
+model_param_map = {
+    "fft": {"lr", "num_epochs", "batch_size", "data_subset"},
+    "metalr": {"lr", "hyper_lr", "num_epochs", "batch_size", "data_subset"},
+    "conv_adapters": {"lr", "reduction", "num_epochs", "batch_size", "data_subset"},
+    "lora": {"lr", "r", "lora_alpha", "num_epochs", "batch_size", "data_subset"}
+}
 
-# === Run experiments ===
-for params in param_grid:
-    print("\n=== Running experiment with config: ===")
-    print(params)
+# === Precompute total number of configurations across all models ===
+total_experiments = 0
+exp_i = 0
+for model_name, should_run in run_models.items():
+    if not should_run:
+        continue
+    relevant_params = model_param_map[model_name]
+    param_counts = [len(hyperparams[p]) for p in relevant_params]
+    model_total = 1
+    for count in param_counts:
+        model_total *= count
+    total_experiments += model_total
 
-    train_loader, val_loader, test_loader, num_classes = load_kaggle_brain_mri(kaggle_path, params['batch_size'],subset_fraction=0.2)
-    optimizer_class = optim.Adam
-    
+print(f"\n=== TOTAL EXPERIMENTS TO RUN: {total_experiments} ===\n")
 
-    train_models(
-        run_fft=run_models['fft'],
-        run_metalr=run_models['metalr'],
-        run_conv_adapters=run_models['conv_adapters'],
-        run_lora=run_models['lora'],
-        num_classes=num_classes,
-        train_loader=train_loader,
-        val_loader=val_loader,
-        test_loader=test_loader,
-        criterion=criterion,
-        optimizer=optimizer_class,
-        device=device,
-        num_epochs=params['num_epochs'],
-        lr=params['lr'],
-        hyper_lr=params['hyper_lr'],
-        reduction=params['reduction'],
-        r=params['r'],
-        lora_alpha=params['lora_alpha']
-    )
+# === Ensure reproducible dataset splits across all models and configs ===
+torch.manual_seed(42)
+
+# === Run model-specific grid searches ===
+for model_name, should_run in run_models.items():
+    if not should_run:
+        continue
+       
+    relevant_params = sorted(model_param_map[model_name]) 
+    # {"lr", "r", "lora_alpha", "num_epochs", "batch_size", "data_subset"}
+    param_values = [hyperparams[p] for p in relevant_params]
+    param_names = relevant_params
+    model_param_combinations = [dict(zip(param_names, combination)) for combination in itertools.product(*param_values)]
+
+    total_configs = len(model_param_combinations)
+
+    for i, config in enumerate(model_param_combinations):
+        config['seed'] = 42
+        exp_i += 1 
+        print(f"\n[{model_name.upper()}] (Exp. {exp_i}/{total_experiments}) Config {i+1}/{total_configs}: {config}")
+
+        train_loader, val_loader, test_loader, num_classes = load_kaggle_brain_mri(
+            kaggle_path,
+            batch_size=config['batch_size'],
+            subset_fraction=config['data_subset']
+        )
+        dataset_summary = summarize_log("Kaggle Brain MRI", train_loader, val_loader, test_loader, num_classes)
+        optimizer_class = optim.Adam
+
+        train_models(
+            run_fft=(model_name == "fft"),
+            run_metalr=(model_name == "metalr"),
+            run_conv_adapters=(model_name == "conv_adapters"),
+            run_lora=(model_name == "lora"),
+            num_classes=num_classes,
+            train_loader=train_loader,
+            val_loader=val_loader,
+            test_loader=test_loader,
+            criterion=criterion,
+            optimizer=optimizer_class,
+            device=device,
+            num_epochs=config['num_epochs'],
+            lr=config['lr'],
+            hyper_lr=config.get('hyper_lr', 0.1),
+            reduction=config.get('reduction', 64),
+            r=config.get('r', 16),
+            lora_alpha=config.get('lora_alpha', 32),
+            config=config,
+            dataset_summary=dataset_summary
+        )

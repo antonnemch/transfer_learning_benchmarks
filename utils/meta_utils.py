@@ -30,6 +30,9 @@ def get_optimizer(model, now_lr):
 
 
 def train_meta_step(inputs, labels, model, meta_model, now_lr, meta_loader, optimizer, criterion, epoch, logger=None, hyper_lr=0.1, batch_idx=None, num_batches=None):
+    total_loss = 0.0
+    correct = 0
+    total = 0
 
     # Step 1: Clone model into meta_model
     meta_model = resnet50_base(pretrained=False, num_classes=model.fc.out_features).to(inputs.device)
@@ -70,7 +73,7 @@ def train_meta_step(inputs, labels, model, meta_model, now_lr, meta_loader, opti
     new_lr = torch.clamp(new_lr, min=1e-6, max=1e-2).detach().tolist()
 
     # Step 9: Fix final layer learning rate for stability in early training
-    if epoch <= 5:
+    if epoch < 5:
         new_lr[-1] = 0.01  # original base lr used in the MetaLR paper
 
     # Step 10: Apply updated learning rates
@@ -86,12 +89,22 @@ def train_meta_step(inputs, labels, model, meta_model, now_lr, meta_loader, opti
     optimizer.zero_grad()
     loss.backward()
     optimizer.step()
+    preds = outputs.argmax(dim=1)
+    correct_batch = (preds == labels).sum().item()
+    total_batch = labels.size(0)
+
+    total_loss += loss.item() * total_batch
+    correct += correct_batch
+    total += total_batch
+
+    batch_acc = correct_batch / total_batch
 
     if logger:
-        logger.log_metalr_lrs(new_lr)
+        logger.log_metalr_lrs(epoch, batch_idx, new_lr)
+        logger.log_batch_metrics(epoch, batch_idx, loss.item(), batch_acc, loss_meta.item())
 
     if batch_idx is not None and num_batches is not None:
-        print(f"Epoch {epoch}, Batch {batch_idx+1}/{num_batches} | Loss: {loss.item():.4f} | MetaLoss: {loss_meta.item():.4f}")
+        print(f"Epoch {epoch}, Batch {batch_idx}/{num_batches} | Loss: {loss.item():.4f} | MetaLoss: {loss_meta.item():.4f}")
 
 
     return loss, outputs, new_lr

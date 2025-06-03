@@ -39,6 +39,17 @@ def summarize(name, train_loader, val_loader, test_loader, num_classes):
     print("Class distribution (train):")
     print(count_class_distribution(train_loader, num_classes).tolist())
 
+def summarize_log(name, train_loader, val_loader, test_loader, num_classes):
+    summary = {
+        "dataset_name": name,
+        "num_classes": num_classes,
+        "train_samples": count_loader_samples(train_loader),
+        "val_samples": count_loader_samples(val_loader),
+        "test_samples": count_loader_samples(test_loader),
+        "train_class_distribution": count_class_distribution(train_loader, num_classes).tolist()
+    }
+    return summary
+
 def sumarize_all(kaggle_path = r"C:\Users\anton\Documents\Datasets\Kaggle Brain MRI",isic_image_dir = r"C:\Users\anton\Documents\Datasets\ISIC\Images", isic_label_csv = r"C:\Users\anton\Documents\Datasets\ISIC\ISIC2018_Task3_Training_GroundTruth.csv", pathmnist_npz = r"C:\Users\anton\Documents\Datasets\PathMNIST\pathmnist_224.npz"):
     # Load and summarize all three datasets
     train, val, test, n_cls = load_kaggle_brain_mri(kaggle_path)

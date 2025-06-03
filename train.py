@@ -20,7 +20,7 @@ def train_fft(num_classes, train_loader, val_loader, test_loader, criterion, opt
         val_acc = evaluate_model(model, val_loader, device)
         elapsed = time.time() - start
         logger.log_epoch_metrics(epoch, loss, acc, elapsed, torch.cuda.max_memory_allocated())
-        print(f"FFT Epoch {epoch+1}/{num_epochs} - Val Acc: {val_acc:.4f}")
+        print(f"FFT Epoch {epoch}/{num_epochs} - Val Acc: {val_acc:.4f}")
     test_acc = evaluate_model(model, test_loader, device)
     print(f"FFT Test Acc: {test_acc:.4f}")
     model_path = f"saved_models/{logger.model_name}_{logger.timestamp}.pt"
@@ -37,6 +37,7 @@ def train_metalr(num_classes, train_loader, val_loader, test_loader, criterion, 
     now_lr = [0.1 * lr] * 18 + [lr]
     train_meta_step.meta_iterator = iter(val_loader)
     for epoch in range(num_epochs):
+        start = time.time()
         model.train()
         num_batches = len(train_loader)
         for batch_idx, (images, labels) in enumerate(train_loader):
@@ -45,7 +46,9 @@ def train_metalr(num_classes, train_loader, val_loader, test_loader, criterion, 
                                               optimizer, criterion, epoch, logger=logger,
                                               hyper_lr=hyper_lr, batch_idx=batch_idx, num_batches=num_batches)
         val_acc = evaluate_model(model, val_loader, device)
-        print(f"MetaLR Epoch {epoch+1}/{num_epochs} - Val Acc: {val_acc:.4f}")
+        elapsed = time.time() - start
+        logger.log_epoch_metrics(epoch, loss, val_acc, elapsed, torch.cuda.max_memory_allocated())
+        print(f"MetaLR Epoch {epoch}/{num_epochs} - Val Acc: {val_acc:.4f}")
     test_acc = evaluate_model(model, test_loader, device)
     print(f"MetaLR Test Acc: {test_acc:.4f}")
     model_path = f"saved_models/{logger.model_name}_{logger.timestamp}.pt"
@@ -59,9 +62,12 @@ def train_conv_adapters(num_classes, train_loader, val_loader, test_loader, crit
     logger.log_param_counts(model)
     print("\n=== Training with Conv-Adapters ===")
     for epoch in range(num_epochs):
+        start = time.time()
         loss, acc = train_one_epoch(model, train_loader, optimizer, device, criterion, epoch, logger)
         val_acc = evaluate_model(model, val_loader, device)
-        print(f"Conv Epoch {epoch+1}/{num_epochs} - Val Acc: {val_acc:.4f}")
+        elapsed = time.time() - start
+        logger.log_epoch_metrics(epoch, loss, acc, elapsed, torch.cuda.max_memory_allocated())
+        print(f"Conv Epoch {epoch}/{num_epochs} - Val Acc: {val_acc:.4f}")
     test_acc = evaluate_model(model, test_loader, device)
     print(f"Conv Test Acc: {test_acc:.4f}")
     model_path = f"saved_models/{logger.model_name}_{logger.timestamp}.pt"
@@ -81,9 +87,12 @@ def train_lora(num_classes, train_loader, val_loader, test_loader, criterion, op
     logger.log_param_counts(model)
     print("\n=== Training with Lora-C ===")
     for epoch in range(num_epochs):
+        start = time.time()
         loss, acc = train_one_epoch(model, train_loader, optimizer, device, criterion, epoch, logger)
         val_acc = evaluate_model(model, val_loader, device)
-        print(f"Lora-C Epoch {epoch+1}/{num_epochs} - Val Acc: {val_acc:.4f}")
+        elapsed = time.time() - start
+        logger.log_epoch_metrics(epoch, loss, acc, elapsed, torch.cuda.max_memory_allocated())
+        print(f"Lora-C Epoch {epoch}/{num_epochs} - Val Acc: {val_acc:.4f}")
     test_acc = evaluate_model(model, test_loader, device)
     print(f"Lora-C Test Acc: {test_acc:.4f}")
     model_path = f"saved_models/{logger.model_name}_{logger.timestamp}.pt"
@@ -92,23 +101,68 @@ def train_lora(num_classes, train_loader, val_loader, test_loader, criterion, op
     logger.save()
 
     
-def train_models(run_fft, run_metalr, run_conv_adapters, run_lora, num_classes, train_loader, val_loader, test_loader, 
-                 criterion, optimizer, device, num_epochs, lr, hyper_lr, reduction, r, lora_alpha):
+def train_models(run_fft, run_metalr, run_conv_adapters, run_lora,
+                 num_classes, train_loader, val_loader, test_loader, 
+                 criterion, optimizer, device, num_epochs, lr, hyper_lr, 
+                 reduction, r, lora_alpha, config=None, dataset_summary=None):
+    
+    def safe_train(model_name, train_fn, **kwargs):
+        try:
+            logger = make_logger(model_name)
+            logger.log_dataset_summary(dataset_summary)
+            logger.log_hyperparams(config)
+            train_fn(**kwargs, logger=logger)
+        except Exception as e:
+            print(f"[ERROR] {model_name} failed: {e}")
+
     if run_fft:
-        logger = make_logger("FFT")
-        train_fft(num_classes, train_loader, val_loader, test_loader,
-                  criterion, optimizer, device, num_epochs, lr=lr, logger=logger)
+        safe_train("FFT", train_fft,
+            num_classes=num_classes,
+            train_loader=train_loader,
+            val_loader=val_loader,
+            test_loader=test_loader,
+            criterion=criterion,
+            optimizer=optimizer,
+            device=device,
+            num_epochs=num_epochs,
+            lr=lr)
+
     if run_metalr:
-        logger = make_logger("MetaLR")
-        train_metalr(num_classes, train_loader, val_loader, test_loader,
-                     criterion, optimizer, device, num_epochs, lr, hyper_lr, logger)
+        safe_train("MetaLR", train_metalr,
+            num_classes=num_classes,
+            train_loader=train_loader,
+            val_loader=val_loader,
+            test_loader=test_loader,
+            criterion=criterion,
+            optimizer=optimizer,
+            device=device,
+            num_epochs=num_epochs,
+            lr=lr,
+            hyper_lr=hyper_lr)
+
     if run_conv_adapters:
-        logger = make_logger("ConvAdapter")
-        train_conv_adapters(num_classes, train_loader, val_loader,
-                            test_loader, criterion, optimizer,
-                            device, num_epochs, reduction, lr=lr, logger=logger)
+        safe_train("ConvAdapter", train_conv_adapters,
+            num_classes=num_classes,
+            train_loader=train_loader,
+            val_loader=val_loader,
+            test_loader=test_loader,
+            criterion=criterion,
+            optimizer=optimizer,
+            device=device,
+            num_epochs=num_epochs,
+            reduction=reduction,
+            lr=lr)
+
     if run_lora:
-        logger = make_logger("LoRA-C")
-        train_lora(num_classes, train_loader, val_loader,
-                   test_loader, criterion, optimizer,
-                   device, num_epochs, r=r, lora_alpha=lora_alpha, lr=lr, logger=logger)
+        safe_train("LoRA-C", train_lora,
+            num_classes=num_classes,
+            train_loader=train_loader,
+            val_loader=val_loader,
+            test_loader=test_loader,
+            criterion=criterion,
+            optimizer=optimizer,
+            device=device,
+            num_epochs=num_epochs,
+            r=r,
+            lora_alpha=lora_alpha,
+            lr=lr)
