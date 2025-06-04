@@ -1,4 +1,5 @@
 import itertools
+import time
 import torch
 from torch import nn, optim
 from train import train_models
@@ -35,13 +36,18 @@ hyperparams = {
     'batch_size': [128,64],
     'data_subset': [0.005],
     'hyper_lr': [1e-1],
-    'reduction': [128],
+    'reduction': [64], 
     'r': [64],
     'lora_alpha': [64]
 }
 
 # === Fixed settings ===
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+if torch.cuda.is_available():
+    print(f"\n================ Using GPU: {torch.cuda.get_device_name(0)}")
+else:
+    print(f"\n================ Using CPU")
+    
 criterion = nn.CrossEntropyLoss()
 
 # === Param relevance mapping per model ===
@@ -69,6 +75,8 @@ print(f"\n=== TOTAL EXPERIMENTS TO RUN: {total_experiments} ===\n")
 
 # === Ensure reproducible dataset splits across all models and configs ===
 torch.manual_seed(42)
+timestamp = time.strftime("%Y%m%d-%H%M%S", time.localtime())
+print(f"=== Timestamp for this run: {timestamp} ===\n")
 
 # === Run model-specific grid searches ===
 for model_name, should_run in run_models.items():
@@ -115,5 +123,6 @@ for model_name, should_run in run_models.items():
             r=config.get('r', 16),
             lora_alpha=config.get('lora_alpha', 32),
             config=config,
-            dataset_summary=dataset_summary
+            dataset_summary=dataset_summary,
+            timestamp=timestamp
         )
