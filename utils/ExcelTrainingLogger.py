@@ -1,32 +1,38 @@
+import hashlib
+import json
 import os
 import pandas as pd
 from datetime import datetime
 from sklearn.metrics import confusion_matrix
 
-class ExcelTrainingLogger:
-    def __init__(self, base_dir="results", model_name="model"):
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.model_name = model_name
-        self.timestamp = timestamp
-        self.filename = f"{model_name}_{timestamp}.xlsx"
-        self.path = os.path.join(base_dir, self.filename)
-        os.makedirs(base_dir, exist_ok=True)
+def make_logger(model_name, config, timestamp="", base_dir="logs"):
+    return ExcelTrainingLogger(model_name=model_name, config=config, timestamp=timestamp, base_dir=base_dir)
 
+class ExcelTrainingLogger:
+    def __init__(self, model_name, config, timestamp, base_dir="logs"):
+        self.model_name = model_name
+        self.config = config
+        self.config_str = json.dumps(config, sort_keys=True)
+        self.config_id = hashlib.md5(self.config_str.encode()).hexdigest()[:8]
+
+        os.makedirs(base_dir, exist_ok=True)
+        self.path = os.path.join(base_dir, f"{model_name} {timestamp}.xlsx")
+
+        # Tables to append
         self.param_table = []
         self.epoch_metrics = []
         self.batch_metrics = []
         self.meta_lrs = []
-        self.confusion_matrices = {}
-        self.final_confusion = None
-        self.hyperparams = {}
-        self.dataset_summary = {}
-        self.model_path = ""
+        self.confusion_matrices = []
+        self.hyperparams = []
+        self.dataset_summary = []
+        self.model_path = None
 
     def log_param_counts(self, model):
         total, trainable, frozen = 0, 0, 0
         for name, module in model.named_children():
             mod_total = mod_train = mod_frozen = 0
-            for p in module.parameters(recurse=False):
+            for p in module.parameters():
                 count = p.numel()
                 mod_total += count
                 if p.requires_grad:
@@ -35,6 +41,7 @@ class ExcelTrainingLogger:
                     mod_frozen += count
             if mod_total > 0:
                 self.param_table.append({
+                    "config_id": self.config_id,
                     "module": name,
                     "total": mod_total,
                     "trainable": mod_train,
@@ -44,6 +51,7 @@ class ExcelTrainingLogger:
                 trainable += mod_train
                 frozen += mod_frozen
         self.param_table.append({
+            "config_id": self.config_id,
             "module": "TOTAL",
             "total": total,
             "trainable": trainable,
@@ -53,24 +61,29 @@ class ExcelTrainingLogger:
     def log_confusion_matrix(self, y_true, y_pred, classes, epoch=None):
         cm = confusion_matrix(y_true, y_pred, labels=range(len(classes)))
         df = pd.DataFrame(cm, index=classes, columns=classes)
-        if epoch is None:
-            self.final_confusion = df
-        else:
-            self.confusion_matrices[f"Epoch {epoch}"] = df
+        df.insert(0, "config_id", self.config_id)
+        df.insert(1, "epoch", epoch if epoch is not None else "final")
+        self.confusion_matrices.append(df)
 
-    def log_hyperparams(self, config: dict):
-        self.hyperparams = config
+    def log_hyperparams(self):
+        row = {"config_id": self.config_id}
+        row.update(self.config)
+        self.hyperparams.append(row)
 
     def log_dataset_summary(self, summary: dict):
-        self.dataset_summary = summary
+        row = {"config_id": self.config_id}
+        row.update(summary)
+        self.dataset_summary.append(row)
 
     def log_model_path(self, path: str):
         self.model_path = path
 
-    def log_epoch_metrics(self, epoch, loss, acc, time_sec, gpu_mem_bytes):
+    def log_epoch_metrics(self, epoch, train_loss, val_loss, acc, time_sec, gpu_mem_bytes):
         self.epoch_metrics.append({
-            "epoch": epoch+1,  # Epochs are 0-indexed in training but 1-indexed in logging
-            "loss": loss,
+            "config_id": self.config_id,
+            "epoch": epoch,
+            "train_loss": train_loss,
+            "val_loss": val_loss,
             "accuracy": acc,
             "time_sec": round(time_sec, 2),
             "gpu_mem_mb": round(gpu_mem_bytes / 1024 / 1024, 2)
@@ -78,44 +91,54 @@ class ExcelTrainingLogger:
 
     def log_batch_metrics(self, epoch, batch_idx, loss, acc, meta_loss="N/A"):
         self.batch_metrics.append({
-            "epoch": epoch  + 1,  # Epochs are 0-indexed in training but 1-indexed in logging
-            "batch": batch_idx  + 1,  # Batches are 0-indexed in training but 1-indexed in logging
+            "config_id": self.config_id,
+            "epoch": epoch,
+            "batch": batch_idx,
             "loss": loss,
             "accuracy": acc,
-            "metaLoss": meta_loss  # Placeholder for MetaLR loss if needed
+            "metaLoss": meta_loss
         })
 
     def log_metalr_lrs(self, epoch, batch, lrs):
-        self.meta_lrs.append({
-        "epoch": epoch,
-        "batch": batch,
-        **{f"lr_{i}": val for i, val in enumerate(lrs)}
-    })
+        row = {"config_id": self.config_id, "epoch": epoch, "batch": batch}
+        row.update({f"lr_{i}": val for i, val in enumerate(lrs)})
+        self.meta_lrs.append(row)
 
     def save(self):
-        with pd.ExcelWriter(self.path) as writer:
-            if self.param_table:
-                pd.DataFrame(self.param_table).to_excel(writer, sheet_name="Parameters", index=False)
-            if self.epoch_metrics:
-                pd.DataFrame(self.epoch_metrics).to_excel(writer, sheet_name="Epoch Metrics", index=False)
-            if self.batch_metrics:
-                pd.DataFrame(self.batch_metrics).to_excel(writer, sheet_name="Batch Metrics", index=False)
-            if self.meta_lrs:
-                pd.DataFrame(self.meta_lrs).to_excel(writer, sheet_name="MetaLR LRs", index=False)
-            if self.final_confusion is not None:
-                self.final_confusion.to_excel(writer, sheet_name="Final Confusion")
-            for epoch, df in self.confusion_matrices.items():
-                df.to_excel(writer, sheet_name=f"Confusion {epoch}")
-            if self.hyperparams:
-                pd.DataFrame(list(self.hyperparams.items()), columns=["Hyperparameter", "Value"]).to_excel(writer, sheet_name="Hyperparameters", index=False)
-            if self.dataset_summary:
-                pd.DataFrame(list(self.dataset_summary.items()), columns=["Metric", "Value"]).to_excel(writer, sheet_name="Dataset Summary", index=False)
-            if self.model_path:
-                pd.DataFrame([{"Saved Model Path": self.model_path}]).to_excel(writer, sheet_name="Model File", index=False)
+        if os.path.exists(self.path):
+            with pd.ExcelWriter(self.path, mode="a", if_sheet_exists="overlay", engine="openpyxl") as writer:
+                self._append_to_sheet(writer, "Hyperparameters", self.hyperparams)
+                self._append_to_sheet(writer, "Parameters", self.param_table)
+                self._append_to_sheet(writer, "Dataset Summary", self.dataset_summary)
+                self._append_to_sheet(writer, "Epoch Metrics", self.epoch_metrics)
+                self._append_to_sheet(writer, "Batch Metrics", self.batch_metrics)
+                self._append_to_sheet(writer, "MetaLR LRs", self.meta_lrs)
+                if self.model_path:
+                    pd.DataFrame([{"config_id": self.config_id, "model_path": self.model_path}]).to_excel(writer, sheet_name="Model File", index=False)
+                for df in self.confusion_matrices:
+                    existing = pd.read_excel(self.path, sheet_name="Confusion Matrix") if "Confusion Matrix" in pd.ExcelFile(self.path).sheet_names else pd.DataFrame()
+                    df_all = pd.concat([existing, df], ignore_index=True)
+                    df_all.to_excel(writer, sheet_name="Confusion Matrix", index=False)
+        else:
+            with pd.ExcelWriter(self.path, engine="openpyxl") as writer:
+                self._append_to_sheet(writer, "Hyperparameters", self.hyperparams)
+                self._append_to_sheet(writer, "Parameters", self.param_table)
+                self._append_to_sheet(writer, "Dataset Summary", self.dataset_summary)
+                self._append_to_sheet(writer, "Epoch Metrics", self.epoch_metrics)
+                self._append_to_sheet(writer, "Batch Metrics", self.batch_metrics)
+                self._append_to_sheet(writer, "MetaLR LRs", self.meta_lrs)
+                if self.model_path:
+                    pd.DataFrame([{"config_id": self.config_id, "model_path": self.model_path}]).to_excel(writer, sheet_name="Model File", index=False)
+                for df in self.confusion_matrices:
+                    df.to_excel(writer, sheet_name="Confusion Matrix", index=False)
 
-        return self.path
-
-def make_logger(model_name, suffix="", base_dir="logs"):
-    if suffix:
-        model_name = f"{model_name}_{suffix}"
-    return ExcelTrainingLogger(base_dir=base_dir, model_name=model_name)
+    def _append_to_sheet(self, writer, sheet_name, new_data):
+        if not new_data:
+            return
+        df_new = pd.DataFrame(new_data)
+        try:
+            existing = pd.read_excel(self.path, sheet_name=sheet_name)
+            df_combined = pd.concat([existing, df_new], ignore_index=True)
+        except Exception:
+            df_combined = df_new
+        df_combined.to_excel(writer, sheet_name=sheet_name, index=False)
