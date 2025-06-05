@@ -5,3 +5,5 @@ __pycache__/
 logs/
 saved_models/
 z_misc/
+datasets/
+setup_windows.bat/

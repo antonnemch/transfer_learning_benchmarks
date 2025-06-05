@@ -7,7 +7,7 @@ from utils.dataset_loaders import load_kaggle_brain_mri
 from utils.dataset_summarize import summarize_log
 
 # === Load dataset ===
-kaggle_path = r"C:\Users\anton\Documents\Datasets\Kaggle Brain MRI"
+kaggle_path = r"datasets\Kaggle Brain MRI"
 
 # === Models to run ===
 run_models = {
