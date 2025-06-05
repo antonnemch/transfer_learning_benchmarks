@@ -49,7 +49,7 @@ This repository benchmarks three modern parameter-efficient transfer learning te
 
 ---
 
-## 🧠 Datasets
+## Datasets
 
 | Dataset           | Domain        | Task                      | Classes | Modality          | Train / Val / Test       |
 |------------------|---------------|---------------------------|---------|-------------------|--------------------------|
