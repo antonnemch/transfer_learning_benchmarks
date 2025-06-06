@@ -3,10 +3,37 @@ import torch
 from models.conv_adapter_module import initialize_conv_model
 from models.lora_layers import initialize_lora_model
 from models.resnet_base import initialize_basic_model
+from models.resnet_deepspline import initialize_spline_model
 from utils.ExcelTrainingLogger import make_logger
 from utils.meta_utils import train_meta_step
-from utils.resnet_utils import EarlyStopping, train_one_epoch
+from utils.resnet_utils import EarlyStopping, train_one_epoch, train_one_epoch_spline
 from utils.resnet_utils import evaluate_model
+
+def train_spline(num_classes, train_loader, val_loader, test_loader, criterion, optimizer, device, num_epochs, lr, logger):
+    model = initialize_spline_model(num_classes, device, freeze=True)
+    main_optimizer = optimizer(model.parameters_no_deepspline(), lr=lr)
+    aux_optimizer = torch.optim.Adam(model.parameters_deepspline())
+    early_stopper = EarlyStopping(patience=5)
+    logger.log_param_counts(model)
+
+    print("\n=== Training with B-Spline Activation ===")
+    for epoch in range(num_epochs):
+        start = time.time()
+        train_loss, acc = train_one_epoch_spline(model, train_loader, [main_optimizer, aux_optimizer], device, criterion, epoch, logger)
+        val_loss, val_acc = evaluate_model(model, val_loader, device, criterion, logger, epoch)
+        elapsed = time.time() - start
+        logger.log_epoch_metrics(epoch, train_loss, val_loss, acc, elapsed, torch.cuda.max_memory_allocated())
+        print(f"Spline Epoch {epoch+1}/{num_epochs} - Val Acc: {val_acc:.4f} - Val Loss: {val_loss:.4f}")
+        if early_stopper.step(val_loss):
+            print(f"Early stopping triggered at epoch {epoch+1}")
+            break
+
+    test_acc = evaluate_model(model, test_loader, device, phase="test")
+    print(f"Spline Test Acc: {test_acc:.4f}")
+    model_path = f"saved_models/{logger.model_name}_{logger.config_id}.pt"
+    torch.save(model.state_dict(), model_path)
+    logger.log_model_path(model_path)
+    logger.save()
 
 
 def train_fft(num_classes, train_loader, val_loader, test_loader, criterion, optimizer, device, num_epochs, lr, logger):
@@ -141,14 +168,14 @@ def train_lora(num_classes, train_loader, val_loader, test_loader, criterion, op
     logger.log_model_path(model_path)
     logger.save()
     
-def train_models(run_fft, run_metalr, run_conv_adapters, run_lora,
+def train_models(run_fft, run_metalr, run_conv_adapters, run_lora, run_spline,
                  num_classes, train_loader, val_loader, test_loader, 
                  criterion, optimizer, device, num_epochs, lr, hyper_lr, 
                  reduction, r, lora_alpha, timestamp = "", config=None, dataset_summary=None):
     
     def safe_train(model_name, timestamp, train_fn, **kwargs):
         try:
-            logger = make_logger(model_name,config=config, timestamp=timestamp)  
+            logger = make_logger(model_name, config=config, timestamp=timestamp)  
             logger.log_dataset_summary(dataset_summary)
             logger.log_hyperparams()
             train_fn(**kwargs, logger=logger)
@@ -205,4 +232,16 @@ def train_models(run_fft, run_metalr, run_conv_adapters, run_lora,
             num_epochs=num_epochs,
             r=r,
             lora_alpha=lora_alpha,
+            lr=lr)
+
+    if run_spline:
+        safe_train("DeepSpline", timestamp, train_spline,
+            num_classes=num_classes,
+            train_loader=train_loader,
+            val_loader=val_loader,
+            test_loader=test_loader,
+            criterion=criterion,
+            optimizer=optimizer,
+            device=device,
+            num_epochs=num_epochs,
             lr=lr)

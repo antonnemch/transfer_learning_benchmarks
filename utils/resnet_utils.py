@@ -103,3 +103,40 @@ class EarlyStopping:
         else:
             self.counter += 1
             return self.counter >= self.patience
+        
+
+def train_one_epoch_spline(model, dataloader, optimizers, device, criterion, epoch, logger=None):
+    model.train()
+    total_loss = 0.0
+    correct = 0
+    total = 0
+
+    for batch_idx, (images, labels) in enumerate(dataloader):
+        images, labels = images.to(device), labels.to(device)
+
+        outputs = model(images)
+        loss = criterion(outputs, labels)
+
+        # dual optimizer setup
+        for opt in optimizers:
+            opt.zero_grad()
+        loss.backward()
+        for opt in optimizers:
+            opt.step()
+
+        preds = outputs.argmax(dim=1)
+        correct_batch = (preds == labels).sum().item()
+        total_batch = labels.size(0)
+
+        total_loss += loss.item() * total_batch
+        correct += correct_batch
+        total += total_batch
+
+        batch_acc = correct_batch / total_batch
+        if logger:
+            logger.log_batch_metrics(epoch, batch_idx, loss.item(), batch_acc)
+
+    avg_loss = total_loss / total
+    accuracy = correct / total
+    print(f"Train Loss: {avg_loss:.4f}, Accuracy: {accuracy:.4f}")
+    return avg_loss, accuracy

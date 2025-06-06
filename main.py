@@ -11,10 +11,11 @@ kaggle_path = r"datasets\Kaggle Brain MRI"
 
 # === Models to run ===
 run_models = {
-    'fft': True,
-    'metalr': True,
-    'conv_adapters': True,
-    'lora': True
+    'fft': False,
+    'metalr': False,
+    'conv_adapters': False,
+    'lora': False,
+    'spline': True
 }
 
 # === Define hyperparameter search space ===
@@ -26,15 +27,15 @@ hyperparams = {
     'hyper_lr': [1e-1, 1e-3],
     'reduction': [64, 32],
     'r': [64, 32, 16, 8],
-    'lora_alpha': [64, 32, 16, 8]
+    'lora_alpha': [64, 32, 16]
 }
 
 # === Define hyperparameter search space for testing ===
 hyperparams = {
     'lr': [1e-1],
-    'num_epochs': [1],
-    'batch_size': [128,64],
-    'data_subset': [0.005],
+    'num_epochs': [30],
+    'batch_size': [32],
+    'data_subset': [0.1],
     'hyper_lr': [1e-1],
     'reduction': [64], 
     'r': [64],
@@ -55,7 +56,8 @@ model_param_map = {
     "fft": {"lr", "num_epochs", "batch_size", "data_subset"},
     "metalr": {"lr", "hyper_lr", "num_epochs", "batch_size", "data_subset"},
     "conv_adapters": {"lr", "reduction", "num_epochs", "batch_size", "data_subset"},
-    "lora": {"lr", "r", "lora_alpha", "num_epochs", "batch_size", "data_subset"}
+    "lora": {"lr", "r", "lora_alpha", "num_epochs", "batch_size", "data_subset"},
+    "spline": {"lr", "num_epochs", "batch_size", "data_subset"}
 }
 
 # === Precompute total number of configurations across all models ===
@@ -84,7 +86,6 @@ for model_name, should_run in run_models.items():
         continue
        
     relevant_params = sorted(model_param_map[model_name]) 
-    # {"lr", "r", "lora_alpha", "num_epochs", "batch_size", "data_subset"}
     param_values = [hyperparams[p] for p in relevant_params]
     param_names = relevant_params
     model_param_combinations = [dict(zip(param_names, combination)) for combination in itertools.product(*param_values)]
@@ -109,6 +110,7 @@ for model_name, should_run in run_models.items():
             run_metalr=(model_name == "metalr"),
             run_conv_adapters=(model_name == "conv_adapters"),
             run_lora=(model_name == "lora"),
+            run_spline=(model_name == "spline"),
             num_classes=num_classes,
             train_loader=train_loader,
             val_loader=val_loader,
