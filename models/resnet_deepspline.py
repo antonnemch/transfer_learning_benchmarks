@@ -19,22 +19,45 @@ model_urls = {
 class Bottleneck(nn.Module):
     expansion = 4
 
-    def __init__(self, inplanes, planes, stride=1, downsample=None, opt_params=None):
-        super().__init__()
-        self.opt_params = opt_params or DEFAULT_OPT_PARAMS
+    def __init__(self, in_planes, planes, stride=1, downsample=None,
+                 opt_params=None, shared_act=None):
+        super(Bottleneck, self).__init__()
+        self.opt_params = opt_params
+        self.expansion = Bottleneck.expansion
+        self.downsample = downsample
+        self.stride = stride
 
-        self.conv1 = nn.Conv2d(inplanes, planes, kernel_size=1, bias=False)
+        # Convolution and BatchNorm layers (needed regardless of sharing)
+        self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=1, bias=False)
         self.bn1 = nn.BatchNorm2d(planes)
-        self.act1 = dsnn.DeepBSpline('conv', planes, **self.opt_params)
 
-        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
+        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=stride,
+                               padding=1, bias=False)
         self.bn2 = nn.BatchNorm2d(planes)
-        self.act2 = dsnn.DeepBSpline('conv', planes, **self.opt_params)
 
         self.conv3 = nn.Conv2d(planes, planes * self.expansion, kernel_size=1, bias=False)
         self.bn3 = nn.BatchNorm2d(planes * self.expansion)
-        self.downsample = downsample
-        self.act3 = dsnn.DeepBSpline('conv', planes * self.expansion, **self.opt_params)
+
+        # Activation sharing logic
+        sharing = self.opt_params.get("sharing", "channel")
+
+        if isinstance(shared_act, dict):  # model-level with separate act3
+            self.act1 = shared_act['act']
+            self.act2 = shared_act['act']
+            self.act3 = shared_act['act3']
+        elif shared_act is not None:
+            self.act1 = shared_act
+            self.act2 = shared_act
+            self.act3 = shared_act
+        elif sharing == "block":
+            self.shared_act = dsnn.DeepBSpline('conv', planes, **self.opt_params)
+            self.act1 = self.act2 = self.shared_act
+            self.act3 = dsnn.DeepBSpline('conv', planes * self.expansion, **self.opt_params)
+        else:
+            self.act1 = dsnn.DeepBSpline('conv', planes, **self.opt_params)
+            self.act2 = dsnn.DeepBSpline('conv', planes, **self.opt_params)
+            self.act3 = dsnn.DeepBSpline('conv', planes * self.expansion, **self.opt_params)
+
 
     def forward(self, x):
         identity = x
@@ -55,13 +78,17 @@ class ResNet(dsnn.DSModule):
     def __init__(self, block, layers, num_classes=1000, opt_params=None):
         super().__init__()
         self.opt_params = opt_params or DEFAULT_OPT_PARAMS
-        self.inplanes = 64
+        self.in_planes = 64
 
         self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
         self.bn1 = nn.BatchNorm2d(64)
         self.act1 = dsnn.DeepBSpline('conv', 64, **self.opt_params)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-
+        self.sharing = self.opt_params.get("sharing", "channel")
+        self.global_act = None
+        if self.sharing == "model":
+            self.global_acts = {}  # key: planes value: DeepBSpline
+        
         self.layer1 = self._make_layer(block, 64, layers[0])
         self.layer2 = self._make_layer(block, 128, layers[1], stride=2)
         self.layer3 = self._make_layer(block, 256, layers[2], stride=2)
@@ -73,17 +100,56 @@ class ResNet(dsnn.DSModule):
         self.initialization(spline_init=self.opt_params['init'], init_type='He')
 
     def _make_layer(self, block, planes, blocks, stride=1):
-        downsample = None
-        if stride != 1 or self.inplanes != planes * block.expansion:
+        if stride != 1 or self.in_planes != planes * block.expansion:
             downsample = nn.Sequential(
-                nn.Conv2d(self.inplanes, planes * block.expansion, kernel_size=1, stride=stride, bias=False),
+                nn.Conv2d(self.in_planes, planes * block.expansion,
+                        kernel_size=1, stride=stride, bias=False),
                 nn.BatchNorm2d(planes * block.expansion),
             )
+        else:
+            downsample = None
 
-        layers = [block(self.inplanes, planes, stride, downsample, opt_params=self.opt_params)]
-        self.inplanes = planes * block.expansion
+        layers = []
+
+        # 👇 Determine shared activation based on sharing level
+        shared_layer_act = None
+        if self.sharing == "model":
+            if planes not in self.global_acts:
+                self.global_acts[planes] = dsnn.DeepBSpline('conv', planes, **self.opt_params)
+            if planes * block.expansion not in self.global_acts:
+                self.global_acts[planes * block.expansion] = dsnn.DeepBSpline('conv', planes * block.expansion, **self.opt_params)
+            
+            # Pass both activations into the block
+            shared_layer_act = {
+                'act': self.global_acts[planes],
+                'act3': self.global_acts[planes * block.expansion]
+            }
+        elif self.sharing == "layer":
+            shared_layer_act = {
+                'act': dsnn.DeepBSpline('conv', planes, **self.opt_params),
+                'act3': dsnn.DeepBSpline('conv', planes * block.expansion, **self.opt_params)
+            }
+
+        # 👇 First block (with optional downsample)
+        layers.append(block(
+            self.in_planes,
+            planes,
+            stride,
+            downsample,
+            opt_params=self.opt_params,
+            shared_act=shared_layer_act
+        ))
+
+        self.in_planes = planes * block.expansion
+
+        # 👇 Remaining blocks in this layer
         for _ in range(1, blocks):
-            layers.append(block(self.inplanes, planes, opt_params=self.opt_params))
+            layers.append(block(
+                self.in_planes,
+                planes,
+                opt_params=self.opt_params,
+                shared_act=shared_layer_act
+            ))
 
         return nn.Sequential(*layers)
 
@@ -117,7 +183,8 @@ def resnet50_deepspline(pretrained=False, num_classes=1000):
         model.load_state_dict(state_dict, strict=False)
     return model
 
-def initialize_spline_model(num_classes, device, freeze=True):
+def initialize_spline_model(num_classes, device, freeze=True,sharing='channel'):
+    DEFAULT_OPT_PARAMS['sharing'] = sharing  # 'channel', 'layer', 'block', 'model'
     model = resnet50_deepspline(pretrained=True, num_classes=num_classes)
     if freeze:
         model.freeze_all_but_splines()

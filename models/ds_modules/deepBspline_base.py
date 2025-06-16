@@ -55,6 +55,37 @@ from abc import abstractproperty
 
 from models.ds_modules.deepspline_base import DeepSplineBase
 
+def validate_spline_indexes(indexes, coefficients_vect, x_clamped=None, floored_x=None,
+                             zero_knot_indexes=None, suppress_error=False, tag="forward"):
+    """
+    Checks that `indexes + 1` are within coefficients_vect bounds.
+    Optionally clamps offending indexes. Accepts partial inputs for backward.
+    """
+    coeff_limit = coefficients_vect.size(0)
+    invalid_mask = (indexes + 1) >= coeff_limit
+
+    if invalid_mask.any():
+        print(f"🚨 {tag.upper()} INDEX ERROR: Out-of-bounds access detected")
+        print(f"💡 coeffs size: {coeff_limit}")
+        print(f"💡 max index + 1: {(indexes + 1).max().item()}")
+        print(f"💡 offending index sample: {(indexes + 1)[invalid_mask][0].item()}")
+        print(f"💡 indexes shape: {indexes.shape}")
+        
+        if zero_knot_indexes is not None:
+            print(f"💡 zero_knot_indexes shape: {zero_knot_indexes.shape}")
+        if floored_x is not None:
+            print(f"💡 floored_x range: {floored_x.min().item()} to {floored_x.max().item()}")
+        if x_clamped is not None:
+            print(f"💡 x_clamped range: {x_clamped.min().item()} to {x_clamped.max().item()}")
+
+        if suppress_error:
+            clamped_indexes = indexes.clamp(0, coeff_limit - 2)
+            print(f"✅ Clamped offending indexes to [0, {coeff_limit - 2}]")
+            return clamped_indexes
+        else:
+            raise IndexError("Index would exceed coefficients_vect bounds.")
+
+    return indexes
 
 class DeepBSpline_Func(torch.autograd.Function):
     """
@@ -79,23 +110,28 @@ class DeepBSpline_Func(torch.autograd.Function):
         # on the left and right.
         x_clamped = x.clamp(min=-(grid.item() * (size // 2)),
                             max=(grid.item() * (size // 2 - 1)))
-
-        floored_x = torch.floor(x_clamped / grid)  # left coefficient
+        max_floored = (coefficients_vect.size(0) // x.size(1)) - 2
+        floored_x = x_clamped.clamp(min=-(size // 2), max=max_floored)  # left coefficient
         fracs = x_clamped / grid - floored_x  # distance to left coefficient
 
         # This gives the indexes (in coefficients_vect) of the left
         # coefficients
+
         indexes = (zero_knot_indexes.view(1, -1, 1, 1) + floored_x).long()
 
+        # 🧪 Debug: print only if the index could be out of bounds
+        coeff_limit = coefficients_vect.size(0)
+        clamped_indexes = indexes.clamp(0, coeff_limit - 2)
+        indexes_plus_1 = clamped_indexes + 1
         # Only two B-spline basis functions are required to compute the output
         # (through linear interpolation) for each input in the B-spline range.
-        activation_output = coefficients_vect[indexes + 1] * fracs + \
-            coefficients_vect[indexes] * (1 - fracs)
+        activation_output = coefficients_vect[indexes_plus_1] * fracs + \
+            coefficients_vect[clamped_indexes] * (1 - fracs)
 
         ctx.save_memory = save_memory
 
         if save_memory is False:
-            ctx.save_for_backward(fracs, coefficients_vect, indexes, grid)
+            ctx.save_for_backward(fracs, coefficients_vect, clamped_indexes, grid)
         else:
             ctx.size = size
             ctx.save_for_backward(x, coefficients_vect, grid,
@@ -139,16 +175,27 @@ class DeepBSpline_Func(torch.autograd.Function):
             x_clamped = x.clamp(min=-(grid.item() * (size // 2)),
                                 max=(grid.item() * (size // 2 - 1)))
 
-            floored_x = torch.floor(x_clamped / grid)  # left coefficient
-            # distance to left coefficient
+            floored_x = torch.floor(x_clamped / grid)
             fracs = x_clamped / grid - floored_x
 
+            # 🔐 Clamp floored_x BEFORE building indexes
+            max_valid_offset = coefficients_vect.size(0) - 2 - zero_knot_indexes.max()
+            floored_x = floored_x.clamp(
+                min=-(zero_knot_indexes.min().item()),
+                max=max_valid_offset.item()
+            )
             # This gives the indexes (in coefficients_vect) of the left
             # coefficients
             indexes = (zero_knot_indexes.view(1, -1, 1, 1) + floored_x).long()
 
-        grad_x = (coefficients_vect[indexes + 1] -
-                  coefficients_vect[indexes]) / grid * grad_out
+        # 🧪 Debug: check if any index is invalid
+        coeff_limit = coefficients_vect.size(0)
+        clamped_indexes = indexes.clamp(0, coeff_limit - 2)
+        indexes_plus_1 = clamped_indexes + 1
+
+
+        grad_x = (coefficients_vect[indexes_plus_1] -
+                    coefficients_vect[clamped_indexes]) / grid * grad_out
 
         # Next, add the gradients with respect to each coefficient, such that,
         # for each data point, only the gradients wrt to the two closest
@@ -157,26 +204,26 @@ class DeepBSpline_Func(torch.autograd.Function):
         grad_coefficients_vect = torch.zeros_like(coefficients_vect)
         # right coefficients gradients
         grad_coefficients_vect.scatter_add_(0,
-                                            indexes.view(-1) + 1,
+                                            clamped_indexes.view(-1) + 1,
                                             (fracs * grad_out).view(-1))
         # left coefficients gradients
-        grad_coefficients_vect.scatter_add_(0, indexes.view(-1),
+        grad_coefficients_vect.scatter_add_(0, clamped_indexes.view(-1),
                                             ((1 - fracs) * grad_out).view(-1))
 
         if save_memory is True:
             # Add gradients from the linear extrapolations
             tmp1 = ((x.detach() + grid * (size // 2)).clamp(max=0)) / grid
-            grad_coefficients_vect.scatter_add_(0, indexes.view(-1),
+            grad_coefficients_vect.scatter_add_(0, clamped_indexes.view(-1),
                                                 (-tmp1 * grad_out).view(-1))
             grad_coefficients_vect.scatter_add_(0,
-                                                indexes.view(-1) + 1,
+                                                clamped_indexes.view(-1) + 1,
                                                 (tmp1 * grad_out).view(-1))
 
             tmp2 = ((x.detach() - grid * (size // 2 - 1)).clamp(min=0)) / grid
-            grad_coefficients_vect.scatter_add_(0, indexes.view(-1),
+            grad_coefficients_vect.scatter_add_(0, clamped_indexes.view(-1),
                                                 (-tmp2 * grad_out).view(-1))
             grad_coefficients_vect.scatter_add_(0,
-                                                indexes.view(-1) + 1,
+                                                clamped_indexes.view(-1) + 1,
                                                 (tmp2 * grad_out).view(-1))
 
         return grad_x, grad_coefficients_vect, None, None, None, None
@@ -272,7 +319,7 @@ class DeepBSplineBase(DeepSplineBase):
             f'{input.size(1)} != {self.num_activations}.'
 
         grid = self.grid.to(self.coefficients_vect.device)
-        zero_knot_indexes = self.zero_knot_indexes.to(grid.device)
+        zero_knot_indexes = self.zero_knot_indexes.to(grid.device).long()
 
         output = DeepBSpline_Func.apply(x, self.coefficients_vect, grid,
                                         zero_knot_indexes, self.size,

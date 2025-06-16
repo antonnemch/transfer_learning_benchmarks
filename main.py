@@ -11,11 +11,11 @@ kaggle_path = r"datasets\Kaggle Brain MRI"
 
 # === Models to run ===
 run_models = {
-    'fft': False,
-    'metalr': False,
-    'conv_adapters': False,
-    'lora': False,
-    'spline': True
+    'fft': True,
+    'metalr': True,
+    'conv_adapters': True,
+    'lora': True,
+    'spline': False
 }
 
 # === Define hyperparameter search space ===
@@ -33,13 +33,14 @@ hyperparams = {
 # === Define hyperparameter search space for testing ===
 hyperparams = {
     'lr': [1e-1],
-    'num_epochs': [30],
-    'batch_size': [32],
-    'data_subset': [0.1],
+    'num_epochs': [1],
+    'batch_size': [64],
+    'data_subset': [0.05],
     'hyper_lr': [1e-1],
     'reduction': [64], 
     'r': [64],
-    'lora_alpha': [64]
+    'lora_alpha': [64],
+    'sharing': ['model','layer','block','channel'] # For splines, can be 'channel', 'layer', 'block', 'model' ['layer','channel','block','model']
 }
 
 # === Fixed settings ===
@@ -57,7 +58,7 @@ model_param_map = {
     "metalr": {"lr", "hyper_lr", "num_epochs", "batch_size", "data_subset"},
     "conv_adapters": {"lr", "reduction", "num_epochs", "batch_size", "data_subset"},
     "lora": {"lr", "r", "lora_alpha", "num_epochs", "batch_size", "data_subset"},
-    "spline": {"lr", "num_epochs", "batch_size", "data_subset"}
+    "spline": {"lr", "num_epochs", "batch_size", "data_subset","sharing"}
 }
 
 # === Precompute total number of configurations across all models ===
@@ -103,6 +104,7 @@ for model_name, should_run in run_models.items():
             subset_fraction=config['data_subset']
         )
         dataset_summary = summarize_log("Kaggle Brain MRI", train_loader, val_loader, test_loader, num_classes)
+
         optimizer_class = optim.Adam
 
         train_models(
@@ -126,5 +128,6 @@ for model_name, should_run in run_models.items():
             lora_alpha=config.get('lora_alpha', 32),
             config=config,
             dataset_summary=dataset_summary,
-            timestamp=timestamp
+            timestamp=timestamp,
+            sharing=config.get('sharing', 'channel')
         )

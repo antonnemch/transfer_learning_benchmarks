@@ -26,7 +26,7 @@ class DeepBSpline(DeepBSplineBase):
             **kwargs:
                 see deepBspline_base.py/deepspline_base.py.
         """
-
+        print(f"📦 Created spline with {num_activations} activations, mode={mode}")
         super().__init__(mode, num_activations, **kwargs)
 
         # tensor with locations of spline coefficients
@@ -77,6 +77,8 @@ class DeepBSpline(DeepBSplineBase):
         Returns:
             output (torch.Tensor)
         """
+        assert input.size(1) == self.num_activations, \
+            f"Channel mismatch! x has {input.size(1)}, expected {self.num_activations}"
         output = super().forward(input)
 
         return output
