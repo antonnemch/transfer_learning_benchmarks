@@ -11,11 +11,12 @@ kaggle_path = r"datasets\Kaggle Brain MRI"
 
 # === Models to run ===
 run_models = {
-    'fft': True,
-    'metalr': True,
-    'conv_adapters': True,
-    'lora': True,
-    'spline': False
+    'fft': False,
+    'metalr': False,
+    'conv_adapters': False,
+    'lora': False,
+    'spline': False,
+    'GPAF': True
 }
 
 # === Define hyperparameter search space ===
@@ -32,15 +33,16 @@ hyperparams = {
 
 # === Define hyperparameter search space for testing ===
 hyperparams = {
-    'lr': [1e-1],
-    'num_epochs': [1],
+    'lr': [1e-3],
+    'num_epochs': [30],
     'batch_size': [64],
-    'data_subset': [0.05],
+    'data_subset': [0.2,1],
     'hyper_lr': [1e-1],
     'reduction': [64], 
     'r': [64],
     'lora_alpha': [64],
-    'sharing': ['model','layer','block','channel'] # For splines, can be 'channel', 'layer', 'block', 'model' ['layer','channel','block','model']
+    'sharing': ['model','layer','block','channel'], # For splines, can be ['layer','channel','block','model']
+    'activation': ['KG_Laplace', 'KG_activation']  # For GPAF models
 }
 
 # === Fixed settings ===
@@ -58,7 +60,8 @@ model_param_map = {
     "metalr": {"lr", "hyper_lr", "num_epochs", "batch_size", "data_subset"},
     "conv_adapters": {"lr", "reduction", "num_epochs", "batch_size", "data_subset"},
     "lora": {"lr", "r", "lora_alpha", "num_epochs", "batch_size", "data_subset"},
-    "spline": {"lr", "num_epochs", "batch_size", "data_subset","sharing"}
+    "spline": {"lr", "num_epochs", "batch_size", "data_subset","sharing"},
+    "GPAF": {"lr", "num_epochs", "batch_size", "data_subset","activation"},
 }
 
 # === Precompute total number of configurations across all models ===
@@ -113,6 +116,7 @@ for model_name, should_run in run_models.items():
             run_conv_adapters=(model_name == "conv_adapters"),
             run_lora=(model_name == "lora"),
             run_spline=(model_name == "spline"),
+            run_gpaf=(model_name == "GPAF"),
             num_classes=num_classes,
             train_loader=train_loader,
             val_loader=val_loader,
@@ -126,6 +130,7 @@ for model_name, should_run in run_models.items():
             reduction=config.get('reduction', 64),
             r=config.get('r', 16),
             lora_alpha=config.get('lora_alpha', 32),
+            activation=config.get('activation', 'KG_Laplace'),
             config=config,
             dataset_summary=dataset_summary,
             timestamp=timestamp,
