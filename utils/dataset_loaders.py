@@ -23,20 +23,32 @@ def load_kaggle_brain_mri(root_dir, batch_size=32, subset_fraction=1.0, split_ra
 
     dataset = datasets.ImageFolder(root=root_dir, transform=transform)
 
-    if subset_fraction < 1.0:
-        subset_size = int(len(dataset) * subset_fraction)
-        dataset, _ = random_split(dataset, [subset_size, len(dataset) - subset_size])
+    # Step 1: Split off test set (always 20% of full dataset)
+    full_len = len(dataset)
+    test_size = int(0.2 * full_len)
+    remaining_size = full_len - test_size
 
-    train_size = int(split_ratio * 0.8 * len(dataset))
-    val_size = int(split_ratio * 0.2 * len(dataset))
-    test_size = len(dataset) - train_size - val_size
-    train_set, val_set, test_set = random_split(dataset, [train_size, val_size, test_size])
+    test_set, remaining = random_split(dataset, [test_size, remaining_size])
+
+    # Step 2: Apply subset_fraction to remaining data
+    if subset_fraction < 1.0:
+        subset_size = int(len(remaining) * subset_fraction)
+        remaining, _ = random_split(remaining, [subset_size, len(remaining) - subset_size])
+
+    # Step 3: Split remaining into train/val
+    train_size = int(split_ratio * len(remaining))
+    val_size = len(remaining) - train_size
+    train_set, val_set = random_split(remaining, [train_size, val_size])
+
+    # Attach class names
+    for subset in [train_set, val_set, test_set]:
+        subset.classes = dataset.classes
 
     train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False)
     test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False)
 
-    num_classes = len(dataset.dataset.classes if hasattr(dataset, 'dataset') else dataset.classes)
+    num_classes = len(dataset.classes)
     return train_loader, val_loader, test_loader, num_classes
 
 

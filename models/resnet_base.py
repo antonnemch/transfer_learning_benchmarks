@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 import torch.utils.model_zoo as model_zoo
 import copy
-from .custom_activations import KGActivation, LaplacianGPAF
+from .custom_activations import AllActivations, CustomActivationPlaceholder, KGActivation, LaplacianGPAF
 
 
 try:
@@ -43,27 +43,22 @@ __all__ = ['resnet50_base', 'ResNet', 'Bottleneck', 'add_adapters_to_resnet', 'f
 model_urls = {
     'resnet50': 'https://download.pytorch.org/models/resnet50-0676ba61.pth'
 }
+
+
 class Bottleneck(nn.Module):
     expansion = 4
 
-    def __init__(self, inplanes, planes, stride=1, downsample=None,is_lora=False, lora_config=None, activation=None):
+    def __init__(self, inplanes, planes, stride=1, downsample=None, is_lora=False, lora_config=None):
         super().__init__()
-        self.lora_config = lora_config or DEFAULT_LORA_CONFIG
-        self.conv1 = conv1x1(inplanes, planes, is_lora=is_lora,lora_config=self.lora_config)
+        self.conv1 = conv1x1(inplanes, planes, is_lora=is_lora, lora_config=lora_config)
         self.bn1 = nn.BatchNorm2d(planes)
-        self.conv2 = conv3x3(planes, planes, stride=stride, is_lora=is_lora, lora_config=self.lora_config)
+        self.conv2 = conv3x3(planes, planes, stride=stride, is_lora=is_lora, lora_config=lora_config)
         self.bn2 = nn.BatchNorm2d(planes)
-        self.conv3 = conv1x1(planes, planes * self.expansion, is_lora=is_lora,lora_config=self.lora_config)
+        self.conv3 = conv1x1(planes, planes * self.expansion, is_lora=is_lora, lora_config=lora_config)
         self.bn3 = nn.BatchNorm2d(planes * self.expansion)
-        if not activation:
-            self.activation = nn.ReLU(inplace=True)
-        else:
-            if activation == "KG_Laplace":
-                self.activation = LaplacianGPAF()
-            elif activation == "KG_activation":
-                self.activation = KGActivation()
-            else:
-                raise ValueError(f"Unsupported activation: {activation}")
+        self.act1 = CustomActivationPlaceholder()
+        self.act2 = CustomActivationPlaceholder()
+        self.act3 = CustomActivationPlaceholder()        
         self.downsample = downsample
         self.adapter = None
         self.adapter_in_channels = planes
@@ -74,7 +69,7 @@ class Bottleneck(nn.Module):
 
         out = self.conv1(x)
         out = self.bn1(out)
-        out = self.activation(out)
+        out = self.act1(out)
 
         if use_adapter_pre_conv2:
             adapter_out = self.adapter(out)
@@ -89,7 +84,7 @@ class Bottleneck(nn.Module):
             else:
                 out = out + self.adapter(out)
 
-        out = self.activation(out)
+        out = self.act2(out)
         out = self.conv3(out)
         out = self.bn3(out)
 
@@ -97,35 +92,28 @@ class Bottleneck(nn.Module):
             identity = self.downsample(x)
 
         out += identity
-        out = self.activation(out)
+        out = self.act3(out)
         return out
     
 class ResNet(nn.Module):
-    def __init__(self, block, layers, num_classes=1000, is_lora=False, lora_config=None, activation=None):
+    def __init__(self, block, layers, num_classes=1000, is_lora=False, lora_config=None):
         super().__init__()
         self.lora_config = lora_config or DEFAULT_LORA_CONFIG
         self.inplanes = 64
         self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
         self.bn1 = nn.BatchNorm2d(64)
-        if not activation:
-            self.activation = nn.ReLU(inplace=True)
-        else:
-            if activation == "KG_Laplace":
-                self.activation = LaplacianGPAF()
-            elif activation == "KG_activation":
-                self.activation = KGActivation()
-            else:
-                raise ValueError(f"Unsupported activation: {activation}")
+        self.activation = CustomActivationPlaceholder()
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-        self.layer1 = self._make_layer(block, 64, layers[0], is_lora=is_lora, lora_config=self.lora_config,activation=activation)
-        self.layer2 = self._make_layer(block, 128, layers[1], stride=2, is_lora=is_lora, lora_config=self.lora_config, activation=activation)
-        self.layer3 = self._make_layer(block, 256, layers[2], stride=2, is_lora=is_lora, lora_config=self.lora_config, activation=activation)
-        self.layer4 = self._make_layer(block, 512, layers[3], stride=2, is_lora=is_lora, lora_config=self.lora_config, activation=activation)
+
+        self.layer1 = self._make_layer(block, 64, layers[0], is_lora=is_lora, lora_config=lora_config)
+        self.layer2 = self._make_layer(block, 128, layers[1], stride=2, is_lora=is_lora, lora_config=lora_config)
+        self.layer3 = self._make_layer(block, 256, layers[2], stride=2, is_lora=is_lora, lora_config=lora_config)
+        self.layer4 = self._make_layer(block, 512, layers[3], stride=2, is_lora=is_lora, lora_config=lora_config)
 
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.fc = nn.Linear(512 * block.expansion, num_classes)
 
-    def _make_layer(self, block, planes, blocks, stride=1, is_lora=False, lora_config=None, activation=None):
+    def _make_layer(self, block, planes, blocks, stride=1, is_lora=False, lora_config=None):
         downsample = None
         if stride != 1 or self.inplanes != planes * block.expansion:
             downsample = nn.Sequential(
@@ -133,11 +121,19 @@ class ResNet(nn.Module):
                 nn.BatchNorm2d(planes * block.expansion)
             )
 
-        layers = [block(self.inplanes, planes, stride, downsample, is_lora=is_lora, lora_config=self.lora_config, activation=activation)]
+        layers = []
+        for i in range(blocks):
+            layers.append(block(
+                self.inplanes if i == 0 else planes * block.expansion,
+                planes,
+                stride if i == 0 else 1,
+                downsample if i == 0 else None,
+                is_lora=is_lora,
+                lora_config=lora_config
+            ))
         self.inplanes = planes * block.expansion
-        for _ in range(1, blocks):
-            layers.append(block(self.inplanes, planes, is_lora=is_lora, lora_config=self.lora_config))
         return nn.Sequential(*layers)
+
 
     def forward(self, x):
         x = self.activation(self.bn1(self.conv1(x)))
@@ -150,6 +146,25 @@ class ResNet(nn.Module):
         x = torch.flatten(x, 1)
         x = self.fc(x)
         return x
+    
+    def set_custom_activation_map(self, activation_map):
+        for name, act in activation_map.items():
+            parts = name.split('.')
+            obj = self
+            for p in parts[:-1]:
+                obj = getattr(obj, p)
+            final_attr = parts[-1]
+            if hasattr(obj, final_attr):
+                attr = getattr(obj, final_attr)
+                if isinstance(attr, CustomActivationPlaceholder):
+                    attr.set_activation(act)
+                    print(f"Set {name} -> {act}")
+                else:
+                    setattr(obj, final_attr, act)
+                    print(f"Replaced {name} -> {act}")
+            else:
+                print(f"Warning: {name} not found!")
+
 
     def load_weight_lora(self, state_dict):
         if 'model_state_dict' in state_dict:
@@ -184,9 +199,9 @@ class ResNet(nn.Module):
 
         self.load_state_dict(state_dict_tmp, strict=False)
 
-def freeze_non_activation_params(model, activation_classes=(KGActivation, LaplacianGPAF)):
+def freeze_non_activation_params(model):
     for name, module in model.named_modules():
-        if isinstance(module, activation_classes):
+        if isinstance(module, AllActivations.ACTIVATION_TYPES):
             print(f"Leaving activation parameters unfrozen in: {name}")
             continue
         if isinstance(module, nn.Linear) and name == 'fc':
@@ -194,8 +209,8 @@ def freeze_non_activation_params(model, activation_classes=(KGActivation, Laplac
         for param_name, param in module.named_parameters(recurse=False):
             param.requires_grad = False
 
-def resnet50_base(pretrained=True, num_classes=1000, is_lora=False,  lora_config=None, activation=None,freeze=False):
-    model = ResNet(Bottleneck, [3, 4, 6, 3], num_classes=num_classes, is_lora=is_lora, lora_config=lora_config, activation=activation)
+def resnet50_base(pretrained=True, num_classes=1000, is_lora=False,  lora_config=None,freeze=False):
+    model = ResNet(Bottleneck, [3, 4, 6, 3], num_classes=num_classes, is_lora=is_lora, lora_config=lora_config)
     if pretrained:
         state_dict = model_zoo.load_url(model_urls['resnet50'])
         # Remove fc weights if shape mismatch is expected
@@ -206,11 +221,11 @@ def resnet50_base(pretrained=True, num_classes=1000, is_lora=False,  lora_config
         else:
             model.load_state_dict(state_dict, strict=False)
     if freeze:
-        freeze_non_activation_params(model, activation_classes=(KGActivation, LaplacianGPAF))
+        freeze_non_activation_params(model)
     return model
 
 
-def initialize_basic_model(num_classes, device, gpaf=None,freeze=False):
-    model = resnet50_base(pretrained=True, num_classes=num_classes,is_lora=False ,activation=gpaf,freeze=freeze)
+def initialize_basic_model(num_classes, device,freeze=False):
+    model = resnet50_base(pretrained=True, num_classes=num_classes,is_lora=False,freeze=freeze)
     model.to(device)
     return model

@@ -2,47 +2,21 @@ import itertools
 import time
 import torch
 from torch import nn, optim
-from train import train_models
+from train import safe_train
 from utils.dataset_loaders import load_kaggle_brain_mri
 from utils.dataset_summarize import summarize_log
-
+from utils.resnet_utils import compute_num_experiments
 # === Load dataset ===
 kaggle_path = r"datasets\Kaggle Brain MRI"
 
-# === Models to run ===
-run_models = {
-    'fft': False,
-    'metalr': False,
-    'conv_adapters': False,
-    'lora': False,
-    'spline': False,
-    'GPAF': True
-}
 
 # === Define hyperparameter search space ===
 hyperparams = {
-    'lr': [1e-3, 1e-1],
-    'num_epochs': [30],
-    'batch_size': [64, 32],
-    'data_subset': [0.05, 0.2, 0.5, 1],
-    'hyper_lr': [1e-1, 1e-3],
-    'reduction': [64, 32],
-    'r': [64, 32, 16, 8],
-    'lora_alpha': [64, 32, 16]
-}
-
-# === Define hyperparameter search space for testing ===
-hyperparams = {
-    'lr': [1e-3],
-    'num_epochs': [30],
+    'lr': [1e-4],
+    'num_epochs': [1],
     'batch_size': [64],
-    'data_subset': [0.2,1],
-    'hyper_lr': [1e-1],
-    'reduction': [64], 
-    'r': [64],
-    'lora_alpha': [64],
-    'sharing': ['model','layer','block','channel'], # For splines, can be ['layer','channel','block','model']
-    'activation': ['KG_Laplace', 'KG_activation']  # For GPAF models
+    'data_subset': [0.1],
+    'activation_map': ["full_relu"] # ,'KG_Laplace', 'KG_activation']  # For GPAF models
 }
 
 # === Fixed settings ===
@@ -56,83 +30,48 @@ criterion = nn.CrossEntropyLoss()
 
 # === Param relevance mapping per model ===
 model_param_map = {
-    "fft": {"lr", "num_epochs", "batch_size", "data_subset"},
-    "metalr": {"lr", "hyper_lr", "num_epochs", "batch_size", "data_subset"},
-    "conv_adapters": {"lr", "reduction", "num_epochs", "batch_size", "data_subset"},
-    "lora": {"lr", "r", "lora_alpha", "num_epochs", "batch_size", "data_subset"},
-    "spline": {"lr", "num_epochs", "batch_size", "data_subset","sharing"},
-    "GPAF": {"lr", "num_epochs", "batch_size", "data_subset","activation"},
+    "GPAF": {"lr", "num_epochs", "batch_size", "data_subset","activation_map"},
 }
 
-# === Precompute total number of configurations across all models ===
-total_experiments = 0
-exp_i = 0
-for model_name, should_run in run_models.items():
-    if not should_run:
-        continue
-    relevant_params = model_param_map[model_name]
-    param_counts = [len(hyperparams[p]) for p in relevant_params]
-    model_total = 1
-    for count in param_counts:
-        model_total *= count
-    total_experiments += model_total
-
+total_experiments = compute_num_experiments(model_name="GPAF", hyperparams=hyperparams, model_param_map=model_param_map)
 print(f"\n=== TOTAL EXPERIMENTS TO RUN: {total_experiments} ===\n")
 
 # === Ensure reproducible dataset splits across all models and configs ===
 torch.manual_seed(42)
 timestamp = time.strftime("%Y%m%d-%H%M%S", time.localtime())
 print(f"=== Timestamp for this run: {timestamp} ===\n")
+exp_i = 0
 
-# === Run model-specific grid searches ===
-for model_name, should_run in run_models.items():
-    if not should_run:
-        continue
-       
-    relevant_params = sorted(model_param_map[model_name]) 
-    param_values = [hyperparams[p] for p in relevant_params]
-    param_names = relevant_params
-    model_param_combinations = [dict(zip(param_names, combination)) for combination in itertools.product(*param_values)]
 
-    total_configs = len(model_param_combinations)
+model_name = "GPAF"    
+relevant_params = sorted(model_param_map[model_name]) 
+param_values = [hyperparams[p] for p in relevant_params]
+param_names = relevant_params
+model_param_combinations = [dict(zip(param_names, combination)) for combination in itertools.product(*param_values)]
 
-    for i, config in enumerate(model_param_combinations):
-        config['seed'] = 42
-        exp_i += 1 
-        print(f"\n[{model_name.upper()}] (Exp. {exp_i}/{total_experiments}) Config {i+1}/{total_configs}: {config}")
+total_configs = len(model_param_combinations)
 
-        train_loader, val_loader, test_loader, num_classes = load_kaggle_brain_mri(
-            kaggle_path,
-            batch_size=config['batch_size'],
-            subset_fraction=config['data_subset']
-        )
-        dataset_summary = summarize_log("Kaggle Brain MRI", train_loader, val_loader, test_loader, num_classes)
+for i, config in enumerate(model_param_combinations):
+    config['seed'] = 42
+    exp_i += 1 
+    print(f"\n[{model_name.upper()}] (Exp. {exp_i}/{total_experiments}) Config {i+1}/{total_configs}: {config}")
 
-        optimizer_class = optim.Adam
+    train_loader, val_loader, test_loader, num_classes = load_kaggle_brain_mri(
+        kaggle_path,
+        batch_size=config['batch_size'],
+        subset_fraction=config['data_subset']
+    )
+    dataset_summary = summarize_log("Kaggle Brain MRI", train_loader, val_loader, test_loader, num_classes)
 
-        train_models(
-            run_fft=(model_name == "fft"),
-            run_metalr=(model_name == "metalr"),
-            run_conv_adapters=(model_name == "conv_adapters"),
-            run_lora=(model_name == "lora"),
-            run_spline=(model_name == "spline"),
-            run_gpaf=(model_name == "GPAF"),
-            num_classes=num_classes,
-            train_loader=train_loader,
-            val_loader=val_loader,
-            test_loader=test_loader,
-            criterion=criterion,
-            optimizer=optimizer_class,
-            device=device,
-            num_epochs=config['num_epochs'],
-            lr=config['lr'],
-            hyper_lr=config.get('hyper_lr', 0.1),
-            reduction=config.get('reduction', 64),
-            r=config.get('r', 16),
-            lora_alpha=config.get('lora_alpha', 32),
-            activation=config.get('activation', 'KG_Laplace'),
-            config=config,
-            dataset_summary=dataset_summary,
-            timestamp=timestamp,
-            sharing=config.get('sharing', 'channel')
-        )
+    optimizer_class = optim.Adam
+    safe_train("GPAF", timestamp, config ,dataset_summary,
+        num_classes=num_classes,
+        train_loader=train_loader,
+        val_loader=val_loader,
+        test_loader=test_loader,
+        criterion=criterion,
+        optimizer = optimizer_class,
+        device=device,
+        num_epochs = config['num_epochs'],
+        lr = config['lr'],
+        activation_map = config.get('activation_map', None))

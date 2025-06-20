@@ -1,4 +1,7 @@
 import torch
+import torch.nn as nn
+from models.custom_activations import AllActivations, KGActivation, LaplacianGPAF
+from models.custom_activations import ChannelwiseActivation, CustomActivationPlaceholder
 
 def train_one_epoch(model, dataloader, optimizer, device, criterion, epoch, logger=None):
     model.train()
@@ -62,8 +65,9 @@ def evaluate_model(model, dataloader, device, criterion=None, logger=None, epoch
     class_names = dataloader.dataset.classes if hasattr(dataloader.dataset, 'classes') else None
     if logger is not None and class_names is not None:
         logger.log_confusion_matrix(y_true, y_pred, class_names, epoch=epoch if phase == "val" else None)
+        print(f"Confusion matrix logged for {phase} phase.")
 
-    return (avg_loss, acc) if criterion is not None else acc
+    return (avg_loss, acc) if phase != "test" else acc
 
 
 # Prints the number of trainable and frozen parameters in a model,
@@ -140,3 +144,47 @@ def train_one_epoch_spline(model, dataloader, optimizers, device, criterion, epo
     accuracy = correct / total
     print(f"Train Loss: {avg_loss:.4f}, Accuracy: {accuracy:.4f}")
     return avg_loss, accuracy
+
+def compute_num_experiments(model_name, run_models = {"GPAF":True}, hyperparams = None, model_param_map = None):
+    # === Precompute total number of configurations across all models ===
+    total_experiments = 0
+    for model_name, should_run in run_models.items():
+        if not should_run:
+            continue
+        relevant_params = model_param_map[model_name]
+        param_counts = [len(hyperparams[p]) for p in relevant_params]
+        model_total = 1
+        for count in param_counts:
+            model_total *= count
+        total_experiments += model_total
+
+    return total_experiments
+
+def print_model_activations(model):
+    for module_name, module in model.named_modules():
+        for attr_name in dir(module):
+            if attr_name.startswith('_'):
+                continue  # skip private attributes
+
+            attr_value = getattr(module, attr_name)
+
+            if isinstance(attr_value, nn.Module):
+                if isinstance(attr_value, AllActivations.ACTIVATION_TYPES):
+                    if isinstance(attr_value, CustomActivationPlaceholder):
+                        act_fn = attr_value.act_fn
+                        if isinstance(act_fn, nn.Module):
+                            print(f"{module_name}.{attr_name}: CustomActivationPlaceholder -> {act_fn}")
+                            for param_name, param in act_fn.named_parameters(recurse=False):
+                                print(f"  Param {param_name}: {param.detach().cpu().numpy()}")
+                        else:
+                            print(f"{module_name}.{attr_name}: CustomActivationPlaceholder -> [UNSET]")
+                    elif isinstance(attr_value, ChannelwiseActivation):
+                        print(f"{module_name}.{attr_name}: ChannelwiseActivation with {len(attr_value.activations)} activations")
+                        for i, sub_act in enumerate(attr_value.activations):
+                            print(f"  Channel {i}: {sub_act}")
+                            for param_name, param in sub_act.named_parameters(recurse=False):
+                                print(f"    Param {param_name}: {param.detach().cpu().numpy()}")
+                    else:
+                        print(f"{module_name}.{attr_name}: {attr_value}")
+                        for param_name, param in attr_value.named_parameters(recurse=False):
+                            print(f"  Param {param_name}: {param.detach().cpu().numpy()}")

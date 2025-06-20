@@ -1,6 +1,7 @@
 import hashlib
 import json
 import os
+import numpy as np
 import pandas as pd
 from datetime import datetime
 from sklearn.metrics import confusion_matrix
@@ -60,10 +61,14 @@ class ExcelTrainingLogger:
 
     def log_confusion_matrix(self, y_true, y_pred, classes, epoch=None):
         cm = confusion_matrix(y_true, y_pred, labels=range(len(classes)))
-        df = pd.DataFrame(cm, index=classes, columns=classes)
-        df.insert(0, "config_id", self.config_id)
-        df.insert(1, "epoch", epoch if epoch is not None else "final")
-        self.confusion_matrices.append(df)
+        for i, actual_label in enumerate(classes):
+            row = {
+                "config_id": self.config_id,
+                "epoch": epoch if epoch is not None else "final",
+                "actual": actual_label
+            }
+            row.update({pred_label: cm[i, j] for j, pred_label in enumerate(classes)})
+            self.confusion_matrices.append(row)
 
     def log_hyperparams(self):
         row = {"config_id": self.config_id}
@@ -105,32 +110,41 @@ class ExcelTrainingLogger:
         self.meta_lrs.append(row)
 
     def save(self):
-        if os.path.exists(self.path):
-            with pd.ExcelWriter(self.path, mode="a", if_sheet_exists="overlay", engine="openpyxl") as writer:
-                self._append_to_sheet(writer, "Hyperparameters", self.hyperparams)
-                self._append_to_sheet(writer, "Parameters", self.param_table)
-                self._append_to_sheet(writer, "Dataset Summary", self.dataset_summary)
-                self._append_to_sheet(writer, "Epoch Metrics", self.epoch_metrics)
-                self._append_to_sheet(writer, "Batch Metrics", self.batch_metrics)
-                self._append_to_sheet(writer, "MetaLR LRs", self.meta_lrs)
-                if self.model_path:
-                    pd.DataFrame([{"config_id": self.config_id, "model_path": self.model_path}]).to_excel(writer, sheet_name="Model File", index=False)
-                for df in self.confusion_matrices:
-                    existing = pd.read_excel(self.path, sheet_name="Confusion Matrix") if "Confusion Matrix" in pd.ExcelFile(self.path).sheet_names else pd.DataFrame()
-                    df_all = pd.concat([existing, df], ignore_index=True)
-                    df_all.to_excel(writer, sheet_name="Confusion Matrix", index=False)
-        else:
-            with pd.ExcelWriter(self.path, engine="openpyxl") as writer:
-                self._append_to_sheet(writer, "Hyperparameters", self.hyperparams)
-                self._append_to_sheet(writer, "Parameters", self.param_table)
-                self._append_to_sheet(writer, "Dataset Summary", self.dataset_summary)
-                self._append_to_sheet(writer, "Epoch Metrics", self.epoch_metrics)
-                self._append_to_sheet(writer, "Batch Metrics", self.batch_metrics)
-                self._append_to_sheet(writer, "MetaLR LRs", self.meta_lrs)
-                if self.model_path:
-                    pd.DataFrame([{"config_id": self.config_id, "model_path": self.model_path}]).to_excel(writer, sheet_name="Model File", index=False)
-                for df in self.confusion_matrices:
-                    df.to_excel(writer, sheet_name="Confusion Matrix", index=False)
+        self.compute_and_store_metrics()
+
+        mode = "a" if os.path.exists(self.path) else "w"
+        writer_args = {
+            "path": self.path,
+            "mode": mode,
+            "engine": "openpyxl"
+        }
+        if mode == "a":
+            writer_args["if_sheet_exists"] = "overlay"
+
+        with pd.ExcelWriter(**writer_args) as writer:
+            self._append_to_sheet(writer, "Hyperparameters", self.hyperparams)
+            self._append_to_sheet(writer, "Parameters", self.param_table)
+            self._append_to_sheet(writer, "Dataset Summary", self.dataset_summary)
+            self._append_to_sheet(writer, "Epoch Metrics", self.epoch_metrics)
+            self._append_to_sheet(writer, "Batch Metrics", self.batch_metrics)
+            self._append_to_sheet(writer, "MetaLR LRs", self.meta_lrs)
+            self._append_to_sheet(writer, "Metrics", self.metrics)
+
+            if self.model_path:
+                pd.DataFrame([{
+                    "config_id": self.config_id,
+                    "model_path": self.model_path
+                }]).to_excel(writer, sheet_name="Model File", index=False)
+
+            if self.confusion_matrices:
+                df_all_cm = pd.DataFrame(self.confusion_matrices)
+                try:
+                    existing = pd.read_excel(self.path, sheet_name="Confusion Matrix")
+                    df_combined = pd.concat([existing, df_all_cm], ignore_index=True)
+                except Exception:
+                    df_combined = df_all_cm
+                df_combined.to_excel(writer, sheet_name="Confusion Matrix", index=False)
+
 
     def _append_to_sheet(self, writer, sheet_name, new_data):
         if not new_data:
@@ -142,3 +156,45 @@ class ExcelTrainingLogger:
         except Exception:
             df_combined = df_new
         df_combined.to_excel(writer, sheet_name=sheet_name, index=False)
+
+    def compute_and_store_metrics(self):
+        if not self.confusion_matrices:
+            return
+
+        df_cm = pd.DataFrame(self.confusion_matrices)
+        classes = [col for col in df_cm.columns if col not in ["config_id", "epoch", "actual"]]
+
+        metrics_rows = []
+
+        for (config_id, epoch), group in df_cm.groupby(["config_id", "epoch"]):
+            # Rebuild confusion matrix
+            cm = []
+            for actual_class in classes:
+                row = group[group["actual"] == actual_class][classes].values[0]
+                cm.append(row)
+            cm = np.array(cm)
+
+            for i, cls in enumerate(classes):
+                TP = cm[i, i]
+                FN = cm[i, :].sum() - TP
+                FP = cm[:, i].sum() - TP
+                TN = cm.sum() - (TP + FP + FN)
+                support = cm[i, :].sum()
+
+                precision = TP / (TP + FP) if (TP + FP) > 0 else 0
+                recall = TP / (TP + FN) if (TP + FN) > 0 else 0
+                f1 = (2 * precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+                accuracy = (TP + TN) / cm.sum()
+
+                metrics_rows.append({
+                    "config_id": config_id,
+                    "epoch": epoch,
+                    "class": cls,
+                    "precision": precision,
+                    "recall": recall,
+                    "f1": f1,
+                    "accuracy": accuracy,
+                    "support": support
+                })
+
+        self.metrics = metrics_rows
