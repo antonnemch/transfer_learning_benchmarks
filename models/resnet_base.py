@@ -202,11 +202,11 @@ class ResNet(nn.Module):
 def freeze_non_activation_params(model):
     for name, module in model.named_modules():
         if isinstance(module, AllActivations.ACTIVATION_TYPES):
-            print(f"Leaving activation parameters unfrozen in: {name}")
+            #print(f"Leaving activation parameters unfrozen in: {name}")
             continue
         if isinstance(module, nn.Linear) and name == 'fc':
             continue
-        for param_name, param in module.named_parameters(recurse=False):
+        for _, param in module.named_parameters(recurse=False):
             param.requires_grad = False
 
 def resnet50_base(pretrained=True, num_classes=1000, is_lora=False,  lora_config=None,freeze=False):

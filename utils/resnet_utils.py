@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from models.custom_activations import AllActivations, KGActivation, LaplacianGPAF
-from models.custom_activations import ChannelwiseActivation, CustomActivationPlaceholder
+from models.custom_activations import ChannelwiseActivation, CustomActivationPlaceholder, channel_map
 
 def train_one_epoch(model, dataloader, optimizer, device, criterion, epoch, logger=None):
     model.train()
@@ -188,3 +188,59 @@ def print_model_activations(model):
                         print(f"{module_name}.{attr_name}: {attr_value}")
                         for param_name, param in attr_value.named_parameters(recurse=False):
                             print(f"  Param {param_name}: {param.detach().cpu().numpy()}")
+
+
+def build_activation_map(custom_config):
+    """
+    Build an activation map for the model.
+
+    Args:
+        channel_map (dict): Mapping of activation point names to channel counts.
+        custom_config (dict): Mapping of activation point names to dicts:
+            {
+                'type': activation class (e.g., LaplacianGPAF),
+                'mode': 'shared' | 'channelwise',
+                'shared_group': optional identifier for shared activations
+            }
+
+    Returns:
+        dict: Activation map usable by set_custom_activation_map()
+    """
+    activation_map = {}
+    shared_instances = {}
+
+    for name, channels in channel_map.items():
+        if name in custom_config:
+            config = custom_config[name]
+            act_type = config['type']
+            mode = config['mode']
+
+            if mode == 'shared':
+                # Determine group key: shared_group if provided, else the type itself
+                group_key = config.get('shared_group', act_type)
+
+                if group_key not in shared_instances:
+                    shared_instances[group_key] = act_type()
+                    print(f"Created shared activation for group '{group_key}' at {name}")
+
+                activation_map[name] = shared_instances[group_key]
+
+            elif mode == 'channelwise':
+                activation_map[name] = ChannelwiseActivation([act_type() for _ in range(channels)])
+                print(f"Created channelwise activation at {name} with {channels} channels")
+
+            else:
+                raise ValueError(f"Unknown mode '{mode}' for {name}")
+
+        else:
+            # Default to ReLU if not specified in config
+            activation_map[name] = nn.ReLU()
+
+    return activation_map
+
+def print_activation_map(activation_map):
+    for name, act in activation_map.items():
+        if isinstance(act, ChannelwiseActivation):
+            print(f"{name}: ChannelwiseActivation with {len(act.activations)} channels")
+        else:
+            print(f"{name}: {type(act).__name__}")

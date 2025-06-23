@@ -62,100 +62,110 @@ class KGActivation(nn.Module):
 
     def forward(self, x):
         return self.alpha * torch.cos(self.beta * x) + self.gamma * torch.sin(self.beta * x)
-    
 
-relu_activation_map = {
-    # === Top-level conv1 activation ===
-    'activation': nn.ReLU(),
+channel_map = {
+    # Top conv1 activation
+    'activation': 64,
 
     # === Layer 1 ===
-    # Bottleneck 0
-    'layer1.0.act1': nn.ReLU(),  # conv1 activation
-    'layer1.0.act2': nn.ReLU(),  # conv2 activation
-    'layer1.0.act3': nn.ReLU(),  # conv3 activation
+    'layer1.0.act1': 64,
+    'layer1.0.act2': 64,
+    'layer1.0.act3': 256,
 
-    # Bottleneck 1
-    'layer1.1.act1': nn.ReLU(),
-    'layer1.1.act2': nn.ReLU(),
-    'layer1.1.act3': nn.ReLU(),
+    'layer1.1.act1': 64,
+    'layer1.1.act2': 64,
+    'layer1.1.act3': 256,
 
-    # Bottleneck 2
-    'layer1.2.act1': nn.ReLU(),
-    'layer1.2.act2': nn.ReLU(),
-    'layer1.2.act3': nn.ReLU(),
+    'layer1.2.act1': 64,
+    'layer1.2.act2': 64,
+    'layer1.2.act3': 256,
 
     # === Layer 2 ===
-    # Bottleneck 0
-    'layer2.0.act1': nn.ReLU(),
-    'layer2.0.act2': nn.ReLU(),
-    'layer2.0.act3': nn.ReLU(),
+    'layer2.0.act1': 128,
+    'layer2.0.act2': 128,
+    'layer2.0.act3': 512,
 
-    # Bottleneck 1
-    'layer2.1.act1': nn.ReLU(),
-    'layer2.1.act2': nn.ReLU(),
-    'layer2.1.act3': nn.ReLU(),
+    'layer2.1.act1': 128,
+    'layer2.1.act2': 128,
+    'layer2.1.act3': 512,
 
-    # Bottleneck 2
-    'layer2.2.act1': nn.ReLU(),
-    'layer2.2.act2': nn.ReLU(),
-    'layer2.2.act3': nn.ReLU(),
+    'layer2.2.act1': 128,
+    'layer2.2.act2': 128,
+    'layer2.2.act3': 512,
 
-    # Bottleneck 3
-    'layer2.3.act1': nn.ReLU(),
-    'layer2.3.act2': nn.ReLU(),
-    'layer2.3.act3': nn.ReLU(),
+    'layer2.3.act1': 128,
+    'layer2.3.act2': 128,
+    'layer2.3.act3': 512,
 
     # === Layer 3 ===
-    # Bottleneck 0
-    'layer3.0.act1': nn.ReLU(),
-    'layer3.0.act2': nn.ReLU(),
-    'layer3.0.act3': nn.ReLU(),
+    'layer3.0.act1': 256,
+    'layer3.0.act2': 256,
+    'layer3.0.act3': 1024,
 
-    # Bottleneck 1
-    'layer3.1.act1': nn.ReLU(),
-    'layer3.1.act2': nn.ReLU(),
-    'layer3.1.act3': nn.ReLU(),
+    'layer3.1.act1': 256,
+    'layer3.1.act2': 256,
+    'layer3.1.act3': 1024,
 
-    # Bottleneck 2
-    'layer3.2.act1': nn.ReLU(),
-    'layer3.2.act2': nn.ReLU(),
-    'layer3.2.act3': nn.ReLU(),
+    'layer3.2.act1': 256,
+    'layer3.2.act2': 256,
+    'layer3.2.act3': 1024,
 
-    # Bottleneck 3
-    'layer3.3.act1': nn.ReLU(),
-    'layer3.3.act2': nn.ReLU(),
-    'layer3.3.act3': nn.ReLU(),
+    'layer3.3.act1': 256,
+    'layer3.3.act2': 256,
+    'layer3.3.act3': 1024,
 
-    # Bottleneck 4
-    'layer3.4.act1': nn.ReLU(),
-    'layer3.4.act2': nn.ReLU(),
-    'layer3.4.act3': nn.ReLU(),
+    'layer3.4.act1': 256,
+    'layer3.4.act2': 256,
+    'layer3.4.act3': 1024,
 
-    # Bottleneck 5
-    'layer3.5.act1': nn.ReLU(),
-    'layer3.5.act2': nn.ReLU(),
-    'layer3.5.act3': nn.ReLU(),
+    'layer3.5.act1': 256,
+    'layer3.5.act2': 256,
+    'layer3.5.act3': 1024,
 
     # === Layer 4 ===
-    # Bottleneck 0
-    'layer4.0.act1': nn.ReLU(),
-    'layer4.0.act2': nn.ReLU(),
-    'layer4.0.act3': nn.ReLU(),
+    'layer4.0.act1': 512,
+    'layer4.0.act2': 512,
+    'layer4.0.act3': 2048,
 
-    # Bottleneck 1
-    'layer4.1.act1': nn.ReLU(),
-    'layer4.1.act2': nn.ReLU(),
-    'layer4.1.act3': nn.ReLU(),
+    'layer4.1.act1': 512,
+    'layer4.1.act2': 512,
+    'layer4.1.act3': 2048,
 
-    # Bottleneck 2
-    'layer4.2.act1': nn.ReLU(),
-    'layer4.2.act2': nn.ReLU(),
-    'layer4.2.act3': nn.ReLU(),
+    'layer4.2.act1': 512,
+    'layer4.2.act2': 512,
+    'layer4.2.act3': 2048,
+}    
+
+laplacian_gpaf_map_by_model = {
+    name: {
+        'type': LaplacianGPAF,
+        'mode': 'shared',
+        'shared_group': 'lap_all_shared'
+    }
+    for name in channel_map.keys()
 }
 
+all_3x3_shared_config = {
+    name: {
+        'type': LaplacianGPAF,
+        'mode': 'shared',
+        'shared_group': 'lap_3x3_shared'
+    }
+    for name in channel_map.keys() if name.endswith('act2')
+}
+
+laplacian_gpaf_map_by_channel = {
+    'layer4.2.act2': {
+        'type': LaplacianGPAF,
+        'mode': 'channelwise'
+    }
+}
 
 activations = {
-    "full_relu":relu_activation_map
+    "full_relu":{},
+    "laplacian_gpaf":laplacian_gpaf_map_by_channel,
+    "laplacian_gpaf_by_model": laplacian_gpaf_map_by_model,
+    "all_3x3_shared": all_3x3_shared_config,
 }
 
 

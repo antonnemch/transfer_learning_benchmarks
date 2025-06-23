@@ -4,24 +4,26 @@ import traceback
 from models.resnet_base import initialize_basic_model
 from utils.ExcelTrainingLogger import make_logger
 from utils.resnet_utils import EarlyStopping, count_parameters, count_parameters_by_module, print_model_activations, train_one_epoch
-from utils.resnet_utils import evaluate_model
+from utils.resnet_utils import evaluate_model, build_activation_map, print_activation_map
 from models.custom_activations import activations
 
-def train_GPAF(num_classes, train_loader, val_loader, test_loader, criterion, optimizer, device, num_epochs, lr, logger,activation_map):
+def train_GPAF(num_classes, train_loader, val_loader, test_loader, criterion, optimizer, device, num_epochs, lr, logger, activation_type):
     model = initialize_basic_model(num_classes, device,freeze=True)
     optimizer = optimizer(model.parameters(), lr=lr)
     early_stopper = EarlyStopping(patience=3)  # Early stopping instance
     logger.log_param_counts(model)
 
+    activation_map = build_activation_map(activations[activation_type])
 
-    model.set_custom_activation_map(activations[activation_map])
+    print_activation_map(activation_map)
+
+    model.set_custom_activation_map(activation_map)
 
 
     if True:
         count_parameters(model)
         count_parameters_by_module(model)
         #print(f"\n=== Model Summary ===\n{model}\n")
-        print(activations[activation_map])
         print_model_activations(model)
 
 

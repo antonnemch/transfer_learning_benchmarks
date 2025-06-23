@@ -16,7 +16,7 @@ hyperparams = {
     'num_epochs': [1],
     'batch_size': [64],
     'data_subset': [0.1],
-    'activation_map': ["full_relu"] # ,'KG_Laplace', 'KG_activation']  # For GPAF models
+    'activation_type': ["laplacian_gpaf", "all_3x3_shared","laplacian_gpaf_by_model"] #"full_relu",
 }
 
 # === Fixed settings ===
@@ -30,7 +30,7 @@ criterion = nn.CrossEntropyLoss()
 
 # === Param relevance mapping per model ===
 model_param_map = {
-    "GPAF": {"lr", "num_epochs", "batch_size", "data_subset","activation_map"},
+    "GPAF": {"lr", "num_epochs", "batch_size", "data_subset","activation_type"},
 }
 
 total_experiments = compute_num_experiments(model_name="GPAF", hyperparams=hyperparams, model_param_map=model_param_map)
@@ -74,4 +74,4 @@ for i, config in enumerate(model_param_combinations):
         device=device,
         num_epochs = config['num_epochs'],
         lr = config['lr'],
-        activation_map = config.get('activation_map', None))
+        activation_type = config.get('activation_type', None))
