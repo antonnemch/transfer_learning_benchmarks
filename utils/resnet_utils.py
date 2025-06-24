@@ -1,23 +1,60 @@
 import torch
 import torch.nn as nn
+import os
 from models.custom_activations import AllActivations, KGActivation, LaplacianGPAF
 from models.custom_activations import ChannelwiseActivation, CustomActivationPlaceholder, channel_map
 
-def train_one_epoch(model, dataloader, optimizer, device, criterion, epoch, logger=None):
+def train_one_epoch(model, dataloader, net_optimizer, device, criterion, epoch, logger=None, act_optimizer=None):
     model.train()
     total_loss = 0.0
     correct = 0
     total = 0
 
+    # Separate parameters for activation and network
+    if act_optimizer is not None:
+        act_params = []
+        net_params = []
+        for name, param in model.named_parameters():
+            if not param.requires_grad:
+                continue
+            # Check if parameter belongs to an AllActivations module
+            module_names = name.split('.')[:-1]
+            mod = model
+            for mn in module_names:
+                if hasattr(mod, mn):
+                    mod = getattr(mod, mn)
+                else:
+                    mod = None
+                    break
+            if mod is not None and isinstance(mod, AllActivations.ACTIVATION_TYPES):
+                act_params.append(param)
+            else:
+                net_params.append(param)
+
     for batch_idx, (images, labels) in enumerate(dataloader):
         images, labels = images.to(device), labels.to(device)
-
         outputs = model(images)
         loss = criterion(outputs, labels)
 
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+        if act_optimizer is not None:
+            net_optimizer.zero_grad()
+            act_optimizer.zero_grad()
+            loss.backward()
+            # Only step if params exist (avoid error if group is empty)
+            if net_params:
+                for p in net_params:
+                    if p.grad is not None:
+                        pass  # grads already computed
+                net_optimizer.step()
+            if act_params:
+                for p in act_params:
+                    if p.grad is not None:
+                        pass
+                act_optimizer.step()
+        else:
+            net_optimizer.zero_grad()
+            loss.backward()
+            net_optimizer.step()
 
         preds = outputs.argmax(dim=1)
         correct_batch = (preds == labels).sum().item()
@@ -42,12 +79,29 @@ def evaluate_model(model, dataloader, device, criterion=None, logger=None, epoch
     total = 0
     total_loss = 0.0
     y_true, y_pred = [], []
+    per_image_filenames = []
+    per_image_actuals = []
+    per_image_preds = []
+    per_image_confs = []
+    per_image_correct = []
+    per_image_tumor_correct = []
+
+    # Try to get filenames if possible (for ImageFolder-based datasets)
+    has_filenames = hasattr(dataloader.dataset, 'dataset') and hasattr(dataloader.dataset.dataset, 'samples')
+    if has_filenames:
+        # Subset -> ImageFolder
+        all_samples = dataloader.dataset.dataset.samples
+        indices = dataloader.dataset.indices
+    else:
+        all_samples = None
+        indices = None
 
     with torch.no_grad():
-        for images, labels in dataloader:
+        for batch_idx, (images, labels) in enumerate(dataloader):
             images, labels = images.to(device), labels.to(device)
             outputs = model(images)
             preds = outputs.argmax(dim=1)
+            confidences = torch.softmax(outputs, dim=1).max(dim=1).values.cpu().tolist()
 
             # Compute loss if criterion is provided
             if criterion is not None:
@@ -58,6 +112,42 @@ def evaluate_model(model, dataloader, device, criterion=None, logger=None, epoch
             y_pred.extend(preds.cpu().tolist())
             correct += (preds == labels).sum().item()
             total += labels.size(0)
+
+            # Per-image logging for test phase
+            if logger is not None and phase == "test":
+                for i in range(len(labels)):
+                    # Filename
+                    if has_filenames:
+                        img_idx = indices[batch_idx * dataloader.batch_size + i]
+                        img_filename = os.path.basename(all_samples[img_idx][0])
+                    else:
+                        img_filename = "N/A"
+                    actual_idx = labels[i].item()
+                    pred_idx = preds[i].item()
+                    actual_class = dataloader.dataset.classes[actual_idx] if hasattr(dataloader.dataset, 'classes') else str(actual_idx)
+                    predicted_class = dataloader.dataset.classes[pred_idx] if hasattr(dataloader.dataset, 'classes') else str(pred_idx)
+                    prediction_confidence = confidences[i]
+                    is_correct = int(actual_idx == pred_idx)
+                    # Tumor correct logic
+                    tumor_correct = None
+                    if hasattr(dataloader.dataset, 'tumor_classes') and hasattr(dataloader.dataset, 'notumor_class'):
+                        tumor_classes = dataloader.dataset.tumor_classes
+                        notumor_class = dataloader.dataset.notumor_class
+                        if tumor_classes and notumor_class:
+                            is_actual_tumor = actual_class in tumor_classes
+                            is_pred_tumor = predicted_class in tumor_classes
+                            tumor_correct = int(is_actual_tumor == is_pred_tumor)
+                    # Get per-class probabilities for this image
+                    probs = torch.softmax(outputs[i], dim=0).detach().cpu().tolist()
+                    logger.log_test_image(
+                        img_filename=img_filename,
+                        actual_class=actual_class,
+                        predicted_class=predicted_class,
+                        prediction_confidence=prediction_confidence,
+                        correct=is_correct,
+                        tumor_correct=tumor_correct,
+                        probs=probs
+                    )
 
     acc = correct / total
     avg_loss = total_loss / total if criterion is not None else None

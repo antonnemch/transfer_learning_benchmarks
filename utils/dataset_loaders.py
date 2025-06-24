@@ -23,6 +23,10 @@ def load_kaggle_brain_mri(root_dir, batch_size=32, subset_fraction=1.0, split_ra
 
     dataset = datasets.ImageFolder(root=root_dir, transform=transform)
 
+    # Set tumor/non-tumor info for Kaggle
+    dataset.tumor_classes = ["glioma", "meningioma", "pituitary"]
+    dataset.notumor_class = "notumor"
+
     # Step 1: Split off test set (always 20% of full dataset)
     full_len = len(dataset)
     test_size = int(0.2 * full_len)
@@ -40,9 +44,11 @@ def load_kaggle_brain_mri(root_dir, batch_size=32, subset_fraction=1.0, split_ra
     val_size = len(remaining) - train_size
     train_set, val_set = random_split(remaining, [train_size, val_size])
 
-    # Attach class names
+    # Attach class names and propagate tumor info
     for subset in [train_set, val_set, test_set]:
         subset.classes = dataset.classes
+        subset.tumor_classes = dataset.tumor_classes
+        subset.notumor_class = dataset.notumor_class
 
     train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False)
@@ -63,6 +69,10 @@ class ISICDataset(Dataset):
         self.class_names = list(self.data.columns[1:])  # exclude 'image' column
         self.class_map = {name: idx for idx, name in enumerate(self.class_names)}
         self.missing_files = 0
+
+        # Tumor classes info
+        self.tumor_classes = []
+        self.notumor_class = ""
 
     def __len__(self):
         return len(self.data)
@@ -110,6 +120,11 @@ def load_isic(image_dir, csv_path, batch_size=32, split_ratio=0.8):
     val_size = int(split_ratio * 0.2 * len(dataset))
     test_size = len(dataset) - train_size - val_size
     train_set, val_set, test_set = random_split(dataset, [train_size, val_size, test_size])
+    # propagate tumor info to splits
+    for subset in [train_set, val_set, test_set]:
+        subset.tumor_classes = raw_dataset.tumor_classes
+        subset.notumor_class = raw_dataset.notumor_class
+
     train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False)
     test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False)
@@ -126,6 +141,10 @@ class PathMNISTDataset(Dataset):
         self.images = np.concatenate([self.data['train_images'], self.data['val_images'], self.data['test_images']], axis=0)
         self.labels = np.concatenate([self.data['train_labels'], self.data['val_labels'], self.data['test_labels']], axis=0).squeeze()
         self.transform = transform
+
+        # Tumor classes info
+        self.tumor_classes = []
+        self.notumor_class = ""
 
     def __len__(self):
         return len(self.labels)
@@ -157,6 +176,11 @@ def load_pathmnist_npz(npz_path, batch_size=32, split_ratio=0.8):
     val_size = int(split_ratio * 0.2 * len(full_dataset))
     test_size = len(full_dataset) - train_size - val_size
     train_set, val_set, test_set = random_split(full_dataset, [train_size, val_size, test_size])
+
+    # propagate tumor info to splits
+    for subset in [train_set, val_set, test_set]:
+        subset.tumor_classes = full_dataset.tumor_classes
+        subset.notumor_class = full_dataset.notumor_class
 
     train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False)

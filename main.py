@@ -12,11 +12,13 @@ kaggle_path = r"datasets\Kaggle Brain MRI"
 
 # === Define hyperparameter search space ===
 hyperparams = {
-    'lr': [1e-4],
+    'net_lr': [1e-3],
+    'act_lr': [1e-5],
     'num_epochs': [1],
     'batch_size': [64],
     'data_subset': [0.1],
-    'activation_type': ["laplacian_gpaf", "all_3x3_shared","laplacian_gpaf_by_model"] #"full_relu",
+    'activation_type': ["laplacian_gpaf"], # "full_relu","laplacian_gpaf", "all_3x3_shared","laplacian_gpaf_by_model"
+    'optimizer': ["adam", "adadelta"]  # NEW: add optimizer choice
 }
 
 # === Fixed settings ===
@@ -30,7 +32,7 @@ criterion = nn.CrossEntropyLoss()
 
 # === Param relevance mapping per model ===
 model_param_map = {
-    "GPAF": {"lr", "num_epochs", "batch_size", "data_subset","activation_type"},
+    "GPAF": {"net_lr", "num_epochs", "batch_size", "data_subset","activation_type","act_lr", "optimizer"},
 }
 
 total_experiments = compute_num_experiments(model_name="GPAF", hyperparams=hyperparams, model_param_map=model_param_map)
@@ -63,7 +65,14 @@ for i, config in enumerate(model_param_combinations):
     )
     dataset_summary = summarize_log("Kaggle Brain MRI", train_loader, val_loader, test_loader, num_classes)
 
-    optimizer_class = optim.Adam
+    # Select optimizer class and set up lambda for correct params
+    if config['optimizer'].lower() == 'adam':
+        optimizer_class = lambda params, lr: optim.Adam(params, lr=lr)
+    elif config['optimizer'].lower() == 'adadelta':
+        optimizer_class = lambda params, lr: optim.Adadelta(params)  # Use all defaults for Adadelta
+    else:
+        raise ValueError(f"Unknown optimizer: {config['optimizer']}")
+
     safe_train("GPAF", timestamp, config ,dataset_summary,
         num_classes=num_classes,
         train_loader=train_loader,
@@ -73,5 +82,6 @@ for i, config in enumerate(model_param_combinations):
         optimizer = optimizer_class,
         device=device,
         num_epochs = config['num_epochs'],
-        lr = config['lr'],
+        net_lr = config['net_lr'],
+        act_lr = config['act_lr'],
         activation_type = config.get('activation_type', None))

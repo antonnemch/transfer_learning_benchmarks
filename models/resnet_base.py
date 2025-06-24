@@ -158,7 +158,7 @@ class ResNet(nn.Module):
                 attr = getattr(obj, final_attr)
                 if isinstance(attr, CustomActivationPlaceholder):
                     attr.set_activation(act)
-                    print(f"Set {name} -> {act}")
+                    #print(f"Set {name} -> {act}")
                 else:
                     setattr(obj, final_attr, act)
                     print(f"Replaced {name} -> {act}")
