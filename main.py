@@ -1,5 +1,6 @@
 import itertools
 import time
+import random, numpy as np
 import torch
 from torch import nn, optim
 from train import safe_train
@@ -13,12 +14,12 @@ kaggle_path = r"datasets\Kaggle Brain MRI"
 # === Define hyperparameter search space ===
 hyperparams = {
     'net_lr': [1e-3],
-    'act_lr': [1e-5],
+    'act_lr': [1e-5], # None
     'num_epochs': [1],
-    'batch_size': [64],
+    'batch_size': [32],
     'data_subset': [0.1],
-    'activation_type': ["laplacian_gpaf"], # "full_relu","laplacian_gpaf", "all_3x3_shared","laplacian_gpaf_by_model"
-    'optimizer': ["adam", "adadelta"]  # NEW: add optimizer choice
+    'activation_type': ["full_relu"], # "full_relu","laplacian_gpaf", "all_3x3_shared","laplacian_gpaf_by_model"
+    'optimizer': ["adam"]  # NEW: add optimizer choice ["adam", "adadelta"]
 }
 
 # === Fixed settings ===
@@ -39,7 +40,12 @@ total_experiments = compute_num_experiments(model_name="GPAF", hyperparams=hyper
 print(f"\n=== TOTAL EXPERIMENTS TO RUN: {total_experiments} ===\n")
 
 # === Ensure reproducible dataset splits across all models and configs ===
+random.seed(42)
+np.random.seed(42)
 torch.manual_seed(42)
+if torch.cuda.is_available():
+    torch.cuda.manual_seed_all(42)
+
 timestamp = time.strftime("%Y%m%d-%H%M%S", time.localtime())
 print(f"=== Timestamp for this run: {timestamp} ===\n")
 exp_i = 0

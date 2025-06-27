@@ -3,9 +3,18 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-class CustomActivationPlaceholder(nn.Module):
-    def __init__(self):
+class BaseActivation(nn.Module):
+    """
+    Base class for any activation function that wants to carry a named parameter group.
+    This enables consistent logging, freezing, and identification across your model.
+    """
+    def __init__(self, group_name='default'):
         super().__init__()
+        self.group_name = group_name
+
+class CustomActivationPlaceholder(BaseActivation):
+    def __init__(self, group_name='default'):
+        super().__init__(group_name)
         self.act_fn = lambda x: x
 
     def set_activation(self, act_module):
@@ -14,9 +23,9 @@ class CustomActivationPlaceholder(nn.Module):
     def forward(self, x):
         return self.act_fn(x)
 
-class ChannelwiseActivation(nn.Module):
-    def __init__(self, activations_per_channel):
-        super().__init__()
+class ChannelwiseActivation(BaseActivation):
+    def __init__(self, activations_per_channel, group_name='default'):
+        super().__init__(group_name)
         assert isinstance(activations_per_channel, list) or isinstance(activations_per_channel, nn.ModuleList), "activations_per_channel must be a list or ModuleList"
         self.activations = nn.ModuleList(activations_per_channel)
 
@@ -30,10 +39,9 @@ class ChannelwiseActivation(nn.Module):
             outs.append(out)
         return torch.cat(outs, dim=1)
 
-
-class LaplacianGPAF(nn.Module):
-    def __init__(self, k=2):
-        super().__init__()
+class KGActivationLaplacian(BaseActivation):
+    def __init__(self, k=2, group_name='default'):
+        super().__init__(group_name)
         self.alpha = nn.Parameter(torch.tensor(0.1))
         self.beta = nn.Parameter(torch.tensor(1.0))
         self.gamma = nn.Parameter(torch.tensor(0.1))
@@ -52,9 +60,9 @@ class LaplacianGPAF(nn.Module):
         out = y + self.alpha * lap + self.beta * y + self.gamma * (y ** self.k)
         return out
 
-class KGActivation(nn.Module):
-    def __init__(self):
-        super().__init__()
+class KGActivationGeneral(BaseActivation):
+    def __init__(self, group_name='default'):
+        super().__init__(group_name)
         # Initialize parameters as learnable scalars
         self.alpha = nn.Parameter(torch.tensor(1.0))
         self.beta = nn.Parameter(torch.tensor(1.0))
@@ -62,6 +70,33 @@ class KGActivation(nn.Module):
 
     def forward(self, x):
         return self.alpha * torch.cos(self.beta * x) + self.gamma * torch.sin(self.beta * x)
+
+class PReLUActivation(BaseActivation):
+    def __init__(self, num_parameters=1, init=0.25, group_name='default'):
+        """
+        num_parameters: 1 for shared across all channels, or C for per-channel learnable.
+        """
+        super().__init__(group_name)
+        self.prelu = nn.PReLU(num_parameters=num_parameters, init=init)
+
+    def forward(self, x):
+        return self.prelu(x)
+
+class SwishFixed(BaseActivation):
+    def __init__(self, group_name='default'):
+        super().__init__(group_name)
+
+    def forward(self, x):
+        return x * torch.sigmoid(x)
+
+class SwishLearnable(BaseActivation):
+    def __init__(self, group_name='default'):
+        super().__init__(group_name)
+        self.beta = nn.Parameter(torch.tensor(1.0))
+
+    def forward(self, x):
+        return x * torch.sigmoid(self.beta * x)
+
 
 channel_map = {
     # Top conv1 activation
@@ -134,48 +169,4 @@ channel_map = {
     'layer4.2.act1': 512,
     'layer4.2.act2': 512,
     'layer4.2.act3': 2048,
-}    
-
-laplacian_gpaf_map_by_model = {
-    name: {
-        'type': LaplacianGPAF,
-        'mode': 'shared',
-        'shared_group': 'lap_all_shared'
-    }
-    for name in channel_map.keys()
-}
-
-all_3x3_shared_config = {
-    name: {
-        'type': LaplacianGPAF,
-        'mode': 'shared',
-        'shared_group': 'lap_3x3_shared'
-    }
-    for name in channel_map.keys() if name.endswith('act2')
-}
-
-laplacian_gpaf_map_by_channel = {
-    'layer4.2.act2': {
-        'type': LaplacianGPAF,
-        'mode': 'channelwise'
-    }
-}
-
-activations = {
-    "full_relu":{},
-    "laplacian_gpaf":laplacian_gpaf_map_by_channel,
-    "laplacian_gpaf_by_model": laplacian_gpaf_map_by_model,
-    "all_3x3_shared": all_3x3_shared_config,
-}
-
-
-class AllActivations:
-    """Namespace for grouping all custom and standard activations used in the model."""
-    ACTIVATION_TYPES = (
-        CustomActivationPlaceholder,
-        ChannelwiseActivation,
-        LaplacianGPAF,
-        KGActivation,
-        nn.ReLU,
-        # Add more if needed (e.g., nn.LeakyReLU, nn.Sigmoid)
-    )
+}  

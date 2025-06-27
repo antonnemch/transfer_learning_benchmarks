@@ -1,8 +1,9 @@
 import torch
 import torch.nn as nn
 import os
-from models.custom_activations import AllActivations, KGActivation, LaplacianGPAF
-from models.custom_activations import ChannelwiseActivation, CustomActivationPlaceholder, channel_map
+from models.custom_activations import BaseActivation
+from models.custom_activations import ChannelwiseActivation, CustomActivationPlaceholder
+from models.custom_activations import channel_map
 
 def train_one_epoch(model, dataloader, net_optimizer, device, criterion, epoch, logger=None, act_optimizer=None):
     model.train()
@@ -17,7 +18,7 @@ def train_one_epoch(model, dataloader, net_optimizer, device, criterion, epoch, 
         for name, param in model.named_parameters():
             if not param.requires_grad:
                 continue
-            # Check if parameter belongs to an AllActivations module
+            # Check if parameter belongs to a BaseActivation module
             module_names = name.split('.')[:-1]
             mod = model
             for mn in module_names:
@@ -26,7 +27,7 @@ def train_one_epoch(model, dataloader, net_optimizer, device, criterion, epoch, 
                 else:
                     mod = None
                     break
-            if mod is not None and isinstance(mod, AllActivations.ACTIVATION_TYPES):
+            if mod is not None and isinstance(mod, BaseActivation):
                 act_params.append(param)
             else:
                 net_params.append(param)
@@ -259,7 +260,7 @@ def print_model_activations(model):
             attr_value = getattr(module, attr_name)
 
             if isinstance(attr_value, nn.Module):
-                if isinstance(attr_value, AllActivations.ACTIVATION_TYPES):
+                if isinstance(attr_value, BaseActivation):
                     if isinstance(attr_value, CustomActivationPlaceholder):
                         act_fn = attr_value.act_fn
                         if isinstance(act_fn, nn.Module):
@@ -317,7 +318,7 @@ def build_activation_map(custom_config):
 
             elif mode == 'channelwise':
                 activation_map[name] = ChannelwiseActivation([act_type() for _ in range(channels)])
-                print(f"Created channelwise activation at {name} with {channels} channels")
+                #print(f"Created channelwise activation at {name} with {channels} channels")
 
             else:
                 raise ValueError(f"Unknown mode '{mode}' for {name}")

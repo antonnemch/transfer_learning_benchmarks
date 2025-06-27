@@ -1,4 +1,5 @@
 import time
+from xml.parsers.expat import model
 import torch
 import traceback
 from models.resnet_base import initialize_basic_model
@@ -6,6 +7,8 @@ from utils.ExcelTrainingLogger import make_logger
 from utils.resnet_utils import EarlyStopping, count_parameters, count_parameters_by_module, print_model_activations, train_one_epoch
 from utils.resnet_utils import evaluate_model, build_activation_map, print_activation_map
 from models.custom_activations import activations
+from torchsummary import summary
+
 
 def train_GPAF(num_classes, train_loader, val_loader, test_loader, criterion, optimizer, device, num_epochs, logger, activation_type, net_lr, act_lr = None):
     model = initialize_basic_model(num_classes, device,freeze=True)
@@ -30,15 +33,15 @@ def train_GPAF(num_classes, train_loader, val_loader, test_loader, criterion, op
     activation_map = build_activation_map(activations[activation_type])
 
     print_activation_map(activation_map)
-
     model.set_custom_activation_map(activation_map)
 
 
     if True:
-        count_parameters(model)
-        count_parameters_by_module(model)
-        #print(f"\n=== Model Summary ===\n{model}\n")
-        #print_model_activations(model)
+        # count_parameters(model)
+        # count_parameters_by_module(model)
+        # print(f"\n=== Model Summary ===\n{model}\n")
+        summary(model, input_size=(3, 224, 224))
+        # print_model_activations(model)
 
 
     print("\n=== Training with GPAF ===")

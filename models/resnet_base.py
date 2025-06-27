@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 import torch.utils.model_zoo as model_zoo
 import copy
-from .custom_activations import AllActivations, CustomActivationPlaceholder, KGActivation, LaplacianGPAF
+from .custom_activations import BaseActivation, CustomActivationPlaceholder
 
 
 try:
@@ -148,22 +148,24 @@ class ResNet(nn.Module):
         return x
     
     def set_custom_activation_map(self, activation_map):
-        for name, act in activation_map.items():
-            parts = name.split('.')
-            obj = self
-            for p in parts[:-1]:
-                obj = getattr(obj, p)
-            final_attr = parts[-1]
-            if hasattr(obj, final_attr):
-                attr = getattr(obj, final_attr)
-                if isinstance(attr, CustomActivationPlaceholder):
-                    attr.set_activation(act)
-                    #print(f"Set {name} -> {act}")
+        # For each CustomActivationPlaceholder in the model, replace with config activation if present, else ReLU
+        for module_name, module in self.named_modules():
+            if isinstance(module, CustomActivationPlaceholder):
+                parent = self
+                attr_name = module_name
+                # Traverse to parent module if nested
+                if '.' in module_name:
+                    parts = module_name.split('.')
+                    for p in parts[:-1]:
+                        parent = getattr(parent, p)
+                    attr_name = parts[-1]
+                # Replace the placeholder with the activation
+                if module_name in activation_map:
+                    setattr(parent, attr_name, activation_map[module_name])
+                    #print(f"Set {module_name} -> {activation_map[module_name]}")
                 else:
-                    setattr(obj, final_attr, act)
-                    print(f"Replaced {name} -> {act}")
-            else:
-                print(f"Warning: {name} not found!")
+                    setattr(parent, attr_name, nn.ReLU())
+                    #print(f"Defaulted {module_name} to ReLU")
 
 
     def load_weight_lora(self, state_dict):
@@ -201,7 +203,7 @@ class ResNet(nn.Module):
 
 def freeze_non_activation_params(model):
     for name, module in model.named_modules():
-        if isinstance(module, AllActivations.ACTIVATION_TYPES):
+        if isinstance(module, BaseActivation):
             #print(f"Leaving activation parameters unfrozen in: {name}")
             continue
         if isinstance(module, nn.Linear) and name == 'fc':

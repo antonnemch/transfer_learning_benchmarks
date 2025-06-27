@@ -1,0 +1,27 @@
+
+=== stagegroup_act2only_shared_kglap ===
+Total trainable activation parameters: 48
+
+=== act13_shared_kggen ===
+Total trainable activation parameters: 96
+
+=== stage_act123_shared_kglap ===
+Total trainable activation parameters: 147
+
+=== block_act2_shared_kggen ===
+Total trainable activation parameters: 48
+
+=== stage4_act2only_channelwise_kglap ===
+Total trainable activation parameters: 4608
+
+=== all_act123_channelwise_kglap ===
+Total trainable activation parameters: 68160
+
+=== all_act123_channelwise_prelu ===
+Total trainable activation parameters: 22720
+
+=== all_act123_shared_swishfixed ===
+Total trainable activation parameters: 0
+
+=== all_act123_channelwise_swishlearn ===
+Total trainable activation parameters: 22720
