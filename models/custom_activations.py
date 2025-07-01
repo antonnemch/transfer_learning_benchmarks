@@ -54,11 +54,12 @@ class KGActivationLaplacian(BaseActivation):
         self.register_buffer('laplacian_kernel', laplacian_kernel)
 
     def forward(self, y):
-        # Expand kernel to match input channels
-        laplacian_kernel = self.laplacian_kernel.expand(y.shape[1], 1, 3, 3)
+        # Ensure kernel is on the same device as input
+        laplacian_kernel = self.laplacian_kernel.to(y.device).expand(y.shape[1], 1, 3, 3)
         lap = F.conv2d(y, laplacian_kernel, padding=1, groups=y.shape[1])
         out = y + self.alpha * lap + self.beta * y + self.gamma * (y ** self.k)
         return out
+
 
 class KGActivationGeneral(BaseActivation):
     def __init__(self, group_name='default'):

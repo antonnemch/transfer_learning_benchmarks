@@ -156,8 +156,11 @@ def count_activation_params(activation_map):
 
 
 if __name__ == "__main__":
+    import os
     print("Saving activation maps with parameter counts...")
-    with open("activation_maps_output.txt", "w") as f:
+    out_path = os.path.join(os.path.dirname(__file__), "..", "activation_maps_output.txt")
+    out_path = os.path.abspath(out_path)
+    with open(out_path, "w") as f:
         for config_name, config in activations.items():
             activation_map = build_activation_map(config) # Build the activation map using the config
             total = count_activation_params(activation_map)

@@ -29,6 +29,7 @@ class ExcelTrainingLogger:
         self.dataset_summary = []
         self.model_path = None
         self.test_image_rows = []
+        self.metrics = []  # Ensure metrics is always defined
 
     def log_param_counts(self, model):
         total, trainable, frozen = 0, 0, 0
