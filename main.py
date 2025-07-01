@@ -8,7 +8,7 @@ from utils.dataset_loaders import load_kaggle_brain_mri
 from utils.dataset_summarize import summarize_log
 from utils.resnet_utils import compute_num_experiments
 # === Load dataset ===
-kaggle_path = r"datasets\Kaggle Brain MRI"
+kaggle_path = 'datasets/Kaggle Brain MRI'
 
 
 # === Define hyperparameter search space ===
