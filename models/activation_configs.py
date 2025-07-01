@@ -5,7 +5,7 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 from utils.resnet_utils import build_activation_map, print_activation_map
 from models.custom_activations import channel_map
 
-from custom_activations import (
+from models.custom_activations import (
     KGActivationLaplacian,  # Formerly LaplacianGPAF
     KGActivationGeneral,    # Formerly KGActivation
     PReLUActivation,
