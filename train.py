@@ -1,6 +1,7 @@
 import time
 from xml.parsers.expat import model
 import torch
+import os
 import traceback
 from models.resnet_base import initialize_basic_model
 from utils.ExcelTrainingLogger import make_logger
@@ -11,6 +12,7 @@ from torchsummary import summary
 
 
 def train_GPAF(num_classes, train_loader, val_loader, test_loader, criterion, optimizer, device, num_epochs, logger, activation_type, net_lr, act_lr = None):
+    os.makedirs(os.path.join("saved_models"), exist_ok=True)
     model = initialize_basic_model(num_classes, device,freeze=True)
     # Conditional optimizer setup
     opt_name = optimizer.__name__.lower() if hasattr(optimizer, "__name__") else optimizer.__class__.__name__.lower()
@@ -69,7 +71,7 @@ def train_GPAF(num_classes, train_loader, val_loader, test_loader, criterion, op
             break
 
     # Save best model weights
-    best_model_path = f"saved_models/{logger.model_name}_{logger.config_id}_best.pt"
+    best_model_path = os.path.join("saved_models", f"{logger.model_name}_{logger.config_id}_best.pt")
     torch.save(best_model_state, best_model_path)
     print(f"Best model (epoch {best_epoch+1}) saved to {best_model_path}")
     # Load best model for test evaluation
@@ -78,10 +80,9 @@ def train_GPAF(num_classes, train_loader, val_loader, test_loader, criterion, op
     test_acc = evaluate_model(model, test_loader, device, criterion, logger ,phase="test")
     print(f"GPAF Test Acc: {test_acc:.4f}")
     # Save final model (last epoch)
-    final_model_path = f"saved_models/{logger.model_name}_{logger.config_id}_final.pt"
+    final_model_path = os.path.join("saved_models", f"{logger.model_name}_{logger.config_id}_final.pt")
     torch.save(model.state_dict(), final_model_path)
     logger.log_model_path(final_model_path)
-    logger.save()
 
 
 def safe_train(model_name, timestamp, config, dataset_summary, **kwargs):
@@ -93,3 +94,9 @@ def safe_train(model_name, timestamp, config, dataset_summary, **kwargs):
     except Exception as e:
         print(f"[ERROR] {model_name} failed: {e}")
         traceback.print_exc()
+    finally:
+        # Ensure logger is saved even if training fails
+        if 'logger' in locals():
+            logger.save()
+        else:
+            print("Logger not initialized, skipping save.")
