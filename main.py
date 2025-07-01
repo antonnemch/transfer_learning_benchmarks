@@ -7,8 +7,9 @@ from train import safe_train
 from utils.dataset_loaders import load_kaggle_brain_mri
 from utils.dataset_summarize import summarize_log
 from utils.resnet_utils import compute_num_experiments
+import os  # Ensure os is imported at the top
 # === Load dataset ===
-kaggle_path = 'datasets/Kaggle Brain MRI'
+kaggle_path = os.path.join('datasets', 'Kaggle Brain MRI')
 
 
 # === Define hyperparameter search space ===
@@ -17,7 +18,7 @@ hyperparams = {
     'act_lr': [1e-5, 1e-6, None], # None
     'num_epochs': [30],
     'batch_size': [64],
-    'data_subset': [0.05,0.1,0.5,1], 
+    'data_subset': [0.05,0.1,0.5], 
     'optimizer': ["adam","adadelta"],  # NEW: add optimizer choice ["adam", "adadelta"]
     'activation_type': 
         ["full_relu",
