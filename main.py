@@ -13,13 +13,34 @@ kaggle_path = r"datasets\Kaggle Brain MRI"
 
 # === Define hyperparameter search space ===
 hyperparams = {
-    'net_lr': [1e-3],
-    'act_lr': [1e-5], # None
-    'num_epochs': [1],
-    'batch_size': [32],
-    'data_subset': [0.1],
-    'activation_type': ["full_relu"], # "full_relu","laplacian_gpaf", "all_3x3_shared","laplacian_gpaf_by_model"
-    'optimizer': ["adam"]  # NEW: add optimizer choice ["adam", "adadelta"]
+    'net_lr': [1e-3,1e-4],
+    'act_lr': [1e-5, 1e-6, None], # None
+    'num_epochs': [30],
+    'batch_size': [64],
+    'data_subset': [0.05,0.1,0.5,1], 
+    'optimizer': ["adam","adadelta"],  # NEW: add optimizer choice ["adam", "adadelta"]
+    'activation_type': 
+        ["full_relu",
+        # KGActivationLaplacian (kglap)
+        "all_act123_shared_kglap",
+        "stage_act123_shared_kglap",
+        "stagegroup_act2only_shared_kglap",
+        "stage3_4_act2_blockshared_kglap",
+        "stage4_act2only_channelwise_kglap",
+        "all_act123_channelwise_kglap",
+
+        # KGActivationGeneral (kggen)
+        "all_act123_shared_kggen",
+        "stage_act123_shared_kggen",
+        "act13_shared_kggen",
+        "block_act2_shared_kggen",
+        "stage3_4_act2_blockshared_kggen",
+        "all_act123_channelwise_kggen",
+
+        # Baselines
+        "all_act123_channelwise_prelu",
+        "all_act123_shared_swishfixed",
+        "all_act123_channelwise_swishlearn"],
 }
 
 # === Fixed settings ===

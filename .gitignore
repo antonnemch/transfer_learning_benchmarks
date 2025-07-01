@@ -2,8 +2,5 @@
 .vscode/
 __pycache__/
 *.pyc
-logs/
-saved_models/
 z_misc/
-datasets/
 setup_windows.bat/

@@ -15,7 +15,7 @@ pytz==2025.2
 scikit-learn==1.6.1
 scipy==1.15.3
 six==1.17.0
-sympy==1.14.0
+sympy==1.13.1
 threadpoolctl==3.6.0
 typing_extensions==4.14.0
 tzdata==2025.2

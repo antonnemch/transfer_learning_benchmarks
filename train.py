@@ -6,7 +6,7 @@ from models.resnet_base import initialize_basic_model
 from utils.ExcelTrainingLogger import make_logger
 from utils.resnet_utils import EarlyStopping, count_parameters, count_parameters_by_module, print_model_activations, train_one_epoch
 from utils.resnet_utils import evaluate_model, build_activation_map, print_activation_map
-from models.custom_activations import activations
+from models.activation_configs import activations
 from torchsummary import summary
 
 
