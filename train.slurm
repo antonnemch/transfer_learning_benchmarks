@@ -11,7 +11,6 @@
 
 module load StdEnv/2023
 module load python/3.11
-module load cuda/12.1
 module load scipy-stack
 
 VENV_DIR="$SLURM_TMPDIR/venv"
