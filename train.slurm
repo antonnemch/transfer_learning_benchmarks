@@ -12,7 +12,6 @@
 module load StdEnv/2023
 module load python/3.11
 module load cuda/12.1
-module load pytorch/2.2
 module load scipy-stack
 
 VENV_DIR="$SLURM_TMPDIR/venv"
@@ -20,6 +19,7 @@ python -m venv $VENV_DIR
 source $VENV_DIR/bin/activate
 
 pip install --upgrade pip
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 pip install -r requirements.txt || exit 1
 
 python main.py
