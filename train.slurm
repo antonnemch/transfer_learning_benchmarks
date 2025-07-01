@@ -10,10 +10,10 @@
 #SBATCH --mail-type=ALL
 
 module load StdEnv/2023
-module load python/3.10
-module load cuda/11.7
-module load scipy-stack
+module load python/3.11
+module load cuda/12.1
 module load pytorch/2.2
+module load scipy-stack
 
 VENV_DIR="$SLURM_TMPDIR/venv"
 python -m venv $VENV_DIR
