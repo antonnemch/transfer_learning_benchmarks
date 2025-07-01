@@ -9,22 +9,16 @@
 #SBATCH --mail-user=nemc5377@mylaurier.ca
 #SBATCH --mail-type=ALL
 
-# Load required modules
-# Step 1: Load base Python and CUDA
+module load StdEnv/2023
+module load cuda/12.1
 module load python/3.10
-module load cuda/11.7
+module load pytorch/2.2
 
-# Step 2: Load PyTorch that works with the above CUDA
-module load pytorch/2.0
-
-# 2. Create virtual environment (if not already created)
 VENV_DIR="$SLURM_TMPDIR/venv"
 python -m venv $VENV_DIR
 source $VENV_DIR/bin/activate
 
-
 pip install --upgrade pip
-pip install -r requirements.txt
+pip install -r requirements.txt || exit 1
 
-# Run your training script
 python main.py
