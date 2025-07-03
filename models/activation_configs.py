@@ -51,6 +51,7 @@ def make_config(filter_fn, act_class, mode, group_fn=None):
     return config
 
 activations = {
+
     # === KGActivationLaplacian (kglap) ===
 
     # Use a single shared kglap activation for all activation points
@@ -133,16 +134,32 @@ activations = {
         lambda n: True, lambda: PReLUActivation(num_parameters=1), "channelwise"
     ),
 
+    # Channelwise PReLU for act2 layers only
+    "act2only_channelwise_prelu": make_config(
+        lambda n: n.endswith("act2"), lambda: PReLUActivation(num_parameters=1), "channelwise"
+    ),
+
     # One shared SwishFixed activation for all positions
     "all_act123_shared_swishfixed": make_config(
         lambda n: True, SwishFixed, "shared", lambda n: "swish_fixed"
+    ),
+
+    # One shared SwishFixed activation for act2 layers only
+    "act2only_shared_swishfixed": make_config(
+        lambda n: n.endswith("act2"), SwishFixed, "shared", lambda n: "swish_fixed_act2"
     ),
 
     # Channelwise SwishLearnable activation (each channel has its own beta)
     "all_act123_channelwise_swishlearn": make_config(
         lambda n: True, SwishLearnable, "channelwise"
     ),
-
+    
+    # SwishLearnable: one shared per block for act2 in stages 3 and 4
+    "stage3_4_act2_blockshared_swishlearn": make_config(
+        lambda n: (n.startswith("layer3") or n.startswith("layer4")) and n.endswith("act2"),
+        SwishLearnable, "shared",
+        lambda n: f"swishlearn_{n.split('.')[0]}.{n.split('.')[1]}_act2"
+    ),
     # All activations default to ReLU (used as a baseline)
     "full_relu": {}
 }

@@ -12,38 +12,26 @@ from torchsummary import summary
 
 
 def train_GPAF(num_classes, train_loader, val_loader, test_loader, criterion, optimizer, device, num_epochs, logger, activation_type, net_lr, act_lr = None):
-    os.makedirs(os.path.join("saved_models"), exist_ok=True)
-    model = initialize_basic_model(num_classes, device,freeze=True)
-    # Conditional optimizer setup
-    opt_name = optimizer.__name__.lower() if hasattr(optimizer, "__name__") else optimizer.__class__.__name__.lower()
-    if "adadelta" in opt_name:
-        network_optimizer = optimizer(model.parameters())  # Use all defaults
-        if act_lr:
-            activation_optimizer = optimizer(model.parameters())
-        else:
-            activation_optimizer = None
-    else:
-        network_optimizer = optimizer(model.parameters(), lr=net_lr)
-        if act_lr:
-            activation_optimizer = optimizer(model.parameters(), lr=act_lr)
-        else:
-            activation_optimizer = None
 
-    early_stopper = EarlyStopping(patience=3)  # Early stopping instance
-    logger.log_param_counts(model)
+    os.makedirs(os.path.join("saved_models"), exist_ok=True)
+    model = initialize_basic_model(num_classes, device, freeze=True)
+
+    # Always use Adam for network optimizer
+    network_optimizer = torch.optim.Adam(model.parameters(), lr=net_lr)
+
+    # Use the passed optimizer type for activation optimizer if act_lr is provided
+    if act_lr:
+        activation_optimizer = optimizer(model.parameters(), lr=act_lr)
+    else:
+        activation_optimizer = None
+
+    early_stopper = EarlyStopping(patience=5)  # Early stopping instance
 
     activation_map = build_activation_map(activations[activation_type])
 
     print_activation_map(activation_map)
     model.set_custom_activation_map(activation_map)
-
-
-    if True:
-        # count_parameters(model)
-        # count_parameters_by_module(model)
-        # print(f"\n=== Model Summary ===\n{model}\n")
-        summary(model, input_size=(3, 224, 224))
-        # print_model_activations(model)
+    logger.log_param_counts(model)
 
 
     print("\n=== Training with GPAF ===")

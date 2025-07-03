@@ -13,13 +13,13 @@ kaggle_path = os.path.join('datasets', 'Kaggle Brain MRI')
 
 
 # === Define hyperparameter search space ===
-hyperparams = {
+hyperparams_1 = {
     'net_lr': [1e-3,1e-4],
     'act_lr': [1e-5, 1e-6, None], # None
     'num_epochs': [30],
     'batch_size': [64],
     'data_subset': [0.05,0.1,0.5], 
-    'optimizer': ["adam","adadelta"],  # NEW: add optimizer choice ["adam", "adadelta"]
+    'act_optimizer': ["adam","adadelta"],  # NEW: add optimizer choice ["adam", "adadelta"]
     'activation_type': 
         ["full_relu",
         # KGActivationLaplacian (kglap)
@@ -44,6 +44,28 @@ hyperparams = {
         "all_act123_channelwise_swishlearn"],
 }
 
+hyperparams = {
+    'net_lr': [1e-3],
+    'act_lr': [1e-5], # None
+    'num_epochs': [30],
+    'batch_size': [32],
+    'data_subset': [0.05,0.1,0.2,0.5], 
+    'act_optimizer': ["adam","adadelta"],  # NEW: add optimizer choice ["adam", "adadelta"]
+    'activation_type': 
+        ["full_relu",
+        # KGActivationLaplacian (kglap)
+        "stage3_4_act2_blockshared_kglap",
+        "stage4_act2only_channelwise_kglap",
+        "stagegroup_act2only_shared_kglap",
+
+        # Baselines
+        "act2only_channelwise_prelu",
+        "act2only_shared_swishfixed",
+        "all_act123_channelwise_swishlearn",
+        "stage3_4_act2_blockshared_swishlearn"],
+}
+runFFT = True
+
 # === Fixed settings ===
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 if torch.cuda.is_available():
@@ -55,7 +77,7 @@ criterion = nn.CrossEntropyLoss()
 
 # === Param relevance mapping per model ===
 model_param_map = {
-    "GPAF": {"net_lr", "num_epochs", "batch_size", "data_subset","activation_type","act_lr", "optimizer"},
+    "GPAF": {"net_lr", "num_epochs", "batch_size", "data_subset","activation_type","act_lr", "act_optimizer"},
 }
 
 total_experiments = compute_num_experiments(model_name="GPAF", hyperparams=hyperparams, model_param_map=model_param_map)
@@ -93,13 +115,13 @@ for i, config in enumerate(model_param_combinations):
     )
     dataset_summary = summarize_log("Kaggle Brain MRI", train_loader, val_loader, test_loader, num_classes)
 
-    # Select optimizer class and set up lambda for correct params
-    if config['optimizer'].lower() == 'adam':
-        optimizer_class = lambda params, lr: optim.Adam(params, lr=lr)
-    elif config['optimizer'].lower() == 'adadelta':
-        optimizer_class = lambda params, lr: optim.Adadelta(params)  # Use all defaults for Adadelta
+    # Pass the actual optimizer class, not a lambda, so train_GPAF can use it for act_optimizer
+    if config['act_optimizer'].lower() == 'adam':
+        act_optimizer_class = optim.Adam
+    elif config['act_optimizer'].lower() == 'adadelta':
+        act_optimizer_class = optim.Adadelta
     else:
-        raise ValueError(f"Unknown optimizer: {config['optimizer']}")
+        raise ValueError(f"Unknown act_optimizer: {config['act_optimizer']}")
 
     safe_train("GPAF", timestamp, config ,dataset_summary,
         num_classes=num_classes,
@@ -107,7 +129,7 @@ for i, config in enumerate(model_param_combinations):
         val_loader=val_loader,
         test_loader=test_loader,
         criterion=criterion,
-        optimizer = optimizer_class,
+        optimizer = act_optimizer_class,
         device=device,
         num_epochs = config['num_epochs'],
         net_lr = config['net_lr'],
