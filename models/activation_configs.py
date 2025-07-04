@@ -51,6 +51,15 @@ def make_config(filter_fn, act_class, mode, group_fn=None):
     return config
 
 activations = {
+    # Channelwise KGActivationLaplacian for act2 in layer4.3 only
+    "stage4.2_act2only_channelwise_kglap": make_config(
+        lambda n: n == "layer4.2.act2", KGActivationLaplacian, "channelwise"
+    ),
+
+    # Channelwise KGActivationLaplacian for all act1, act2, act3 in layer4.3 only
+    "stage4.2_act123_channelwise_kglap": make_config(
+        lambda n: n.startswith("layer4.2."), KGActivationLaplacian, "channelwise"
+    ),
 
     # === KGActivationLaplacian (kglap) ===
 
@@ -179,6 +188,8 @@ if __name__ == "__main__":
     out_path = os.path.abspath(out_path)
     with open(out_path, "w") as f:
         for config_name, config in activations.items():
+            if config_name not in ["stage4.2_act2only_channelwise_kglap","stage4.2_act123_channelwise_kglap"]:
+                continue
             activation_map = build_activation_map(config) # Build the activation map using the config
             total = count_activation_params(activation_map)
 

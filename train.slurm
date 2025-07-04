@@ -3,8 +3,8 @@
 #SBATCH --account=def-emohamme
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=32G
-#SBATCH --time=10:00:00
+#SBATCH --mem=16G
+#SBATCH --time=48:00:00
 #SBATCH --output=logs/%x-%j.out
 #SBATCH --mail-user=nemc5377@mylaurier.ca
 #SBATCH --mail-type=ALL
@@ -21,4 +21,4 @@ pip install --upgrade pip
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 pip install -r requirements.txt || exit 1
 
-python main.py
+python -u main.py

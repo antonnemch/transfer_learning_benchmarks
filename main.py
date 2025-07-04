@@ -44,7 +44,7 @@ hyperparams_1 = {
         "all_act123_channelwise_swishlearn"],
 }
 
-hyperparams = {
+hyperparams_2 = {
     'net_lr': [1e-3],
     'act_lr': [1e-5], # None
     'num_epochs': [30],
@@ -64,7 +64,33 @@ hyperparams = {
         "all_act123_channelwise_swishlearn",
         "stage3_4_act2_blockshared_swishlearn"],
 }
-runFFT = True
+
+# Testing theory that a fixed low learning rate for activations is better, 
+# AND that activations should not be modified too far away from the fully connected layer
+hyperparams = {
+    'net_lr': [1e-3],
+    'act_lr': [1e-6], # Decided to use an even lower learning rate for activations
+    'num_epochs': [30],
+    'batch_size': [32],
+    'data_subset': [0.02,0.05,0.1,0.2,0.5, 1.0],  # Added 1.0 for full dataset
+    'act_optimizer': ["adam"],  # removed "adadelta" temporarily to limit experiment count
+    'activation_type': 
+        ["full_relu",
+        # KGActivationLaplacian (kglap)
+        # compare results to hyperparams_2 to understand act_lr impact
+        "stage3_4_act2_blockshared_kglap", 
+        "stage4_act2only_channelwise_kglap",
+        "stagegroup_act2only_shared_kglap", 
+        # NEW KGLAP Testing for only late stage activation modification
+        "stage4.2_act2only_channelwise_kglap",
+        "stage4.2_act123_channelwise_kglap",
+
+        # Baselines
+        # "act2only_channelwise_prelu",
+        "act2only_shared_swishfixed", # only kept best performing baseline
+        #"stage3_4_act2_blockshared_swishlearn"
+        ],
+}
 
 # === Fixed settings ===
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

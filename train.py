@@ -25,7 +25,7 @@ def train_GPAF(num_classes, train_loader, val_loader, test_loader, criterion, op
     else:
         activation_optimizer = None
 
-    early_stopper = EarlyStopping(patience=5)  # Early stopping instance
+    early_stopper = EarlyStopping(patience=3)  # Early stopping instance
 
     activation_map = build_activation_map(activations[activation_type])
 
