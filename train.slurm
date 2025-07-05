@@ -21,7 +21,10 @@ pip install --upgrade pip
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 pip install -r requirements.txt || exit 1
 
-# Ensure Python can find local modules
+# Ensure we are in the project root and Python can find local modules
+cd $SLURM_SUBMIT_DIR
 export PYTHONPATH=$PYTHONPATH:$(pwd)
+echo "CWD: $(pwd)"
+ls -l
 
 python -u main.py
