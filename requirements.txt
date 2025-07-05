@@ -11,12 +11,9 @@ openpyxl==3.1.5
 pandas==2.2.3
 pillow==11.2.1
 python-dateutil==2.9.0.post0
-pytz==2025.2
 scikit-learn==1.6.1
 scipy
 six==1.17.0
-sympy==1.13.1
+sympy==1.13.3
 threadpoolctl==3.6.0
 torchsummary
-typing_extensions==4.14.0
-tzdata==2025.2

@@ -12,7 +12,11 @@ from torchsummary import summary
 
 
 def train_GPAF(num_classes, train_loader, val_loader, test_loader, criterion, optimizer, device, num_epochs, logger, activation_type, net_lr, act_lr = None):
-
+    modifiers = {
+        "biases": False,  # Do not modify biases
+        "Deferred": True,  # Use deferred activation updates
+        "Regularization": True,  # Use regularization
+    }
     os.makedirs(os.path.join("saved_models"), exist_ok=True)
     model = initialize_basic_model(num_classes, device, freeze=True)
 

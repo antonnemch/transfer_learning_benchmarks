@@ -1,3 +1,6 @@
+import sys, os
+sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
+
 import itertools
 import time
 import random, numpy as np
@@ -74,6 +77,32 @@ hyperparams = {
     'batch_size': [32],
     'data_subset': [0.02,0.05,0.1,0.2,0.5, 1.0],  # Added 1.0 for full dataset
     'act_optimizer': ["adam"],  # removed "adadelta" temporarily to limit experiment count
+    'activation_type': 
+        ["full_relu",
+        # KGActivationLaplacian (kglap)
+        # compare results to hyperparams_2 to understand act_lr impact
+        "stage3_4_act2_blockshared_kglap", 
+        "stage4_act2only_channelwise_kglap",
+        "stagegroup_act2only_shared_kglap", 
+        # NEW KGLAP Testing for only late stage activation modification
+        "stage4.2_act2only_channelwise_kglap",
+        "stage4.2_act123_channelwise_kglap",
+
+        # Baselines
+        # "act2only_channelwise_prelu",
+        "act2only_shared_swishfixed", # only kept best performing baseline
+        #"stage3_4_act2_blockshared_swishlearn"
+        ],
+}
+
+# Testing regularization, bias enablement, deferred activation learning, and adadelta optimizer
+hyperparams_3 = {
+    'net_lr': [1e-3],
+    'act_lr': [1e-6], # Decided to use an even lower learning rate for activations
+    'num_epochs': [30],
+    'batch_size': [32],
+    'data_subset': [0.02,0.1,0.2,0.5],  # Limited data subset for faster experiments
+    'act_optimizer': ["adam","adadelta"],  # Testing both Adam and Adadelta optimizers
     'activation_type': 
         ["full_relu",
         # KGActivationLaplacian (kglap)
