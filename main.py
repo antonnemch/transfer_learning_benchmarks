@@ -96,7 +96,7 @@ hyperparams_4 = {
 }
 
 #more activations, different optimizer
-hyperparams = {
+hyperparams_5 = {
     'net_lr': [1e-3],
     'act_lr': [1e-6], # Decided to use an even lower learning rate for activations
     'num_epochs': [30],
@@ -122,7 +122,7 @@ hyperparams = {
 }
 
 # Testing regularization, bias enablement, deferred activation learning, and adadelta optimizer
-hyperparams_3 = {
+hyperparams = {
     'net_lr': [1e-3],
     'act_lr': [1e-6], # Decided to use an even lower learning rate for activations
     'num_epochs': [30],
@@ -166,7 +166,7 @@ criterion = nn.CrossEntropyLoss()
 
 # === Param relevance mapping per model ===
 model_param_map = {
-    "GPAF": {"net_lr", "num_epochs", "batch_size", "data_subset","activation_type","act_lr", "act_optimizer"},
+    "GPAF": {"net_lr", "num_epochs", "batch_size", "data_subset", "activation_type", "act_lr", "act_optimizer", "modifiers"},
 }
 
 total_experiments = compute_num_experiments(model_name="GPAF", hyperparams=hyperparams, model_param_map=model_param_map)
