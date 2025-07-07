@@ -146,12 +146,6 @@ hyperparams = {
         #"stage3_4_act2_blockshared_swishlearn"
     ],
     # Add modifiers as a grid search parameter
-    """{"TrainBN": False, "Deferred": None, "Regularization": None},
-        {"TrainBN": True, "Deferred": None, "Regularization": None},
-        {"TrainBN": False, "Deferred": 5, "Regularization": None},
-        {"TrainBN": False, "Deferred": None, "Regularization": 1e-4},
-        {"TrainBN": True, "Deferred": 5, "Regularization": 1e-4},"""
-
     'modifiers': [
         {"TrainBN": True, "Deferred": None, "Regularization": 1e-4},
         {"TrainBN": False, "Deferred": 5, "Regularization": 1e-4},
@@ -159,6 +153,11 @@ hyperparams = {
         {"TrainBN": False, "Deferred": None, "Regularization": 1e-3}
     ]
 }
+"""{"TrainBN": False, "Deferred": None, "Regularization": None},
+        {"TrainBN": True, "Deferred": None, "Regularization": None},
+        {"TrainBN": False, "Deferred": 5, "Regularization": None},
+        {"TrainBN": False, "Deferred": None, "Regularization": 1e-4},
+        {"TrainBN": True, "Deferred": 5, "Regularization": 1e-4},"""
 
 # === Fixed settings ===
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
