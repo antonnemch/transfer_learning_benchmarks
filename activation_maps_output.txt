@@ -1,27 +1,104 @@
 
-=== stagegroup_act2only_shared_kglap ===
-Total trainable activation parameters: 48
+=== stage4.2_act2only_channelwise_kglap ===
+Total trainable activation parameters: 1536
+activation: ReLU
+layer1.0.act1: ReLU
+layer1.0.act2: ReLU
+layer1.0.act3: ReLU
+layer1.1.act1: ReLU
+layer1.1.act2: ReLU
+layer1.1.act3: ReLU
+layer1.2.act1: ReLU
+layer1.2.act2: ReLU
+layer1.2.act3: ReLU
+layer2.0.act1: ReLU
+layer2.0.act2: ReLU
+layer2.0.act3: ReLU
+layer2.1.act1: ReLU
+layer2.1.act2: ReLU
+layer2.1.act3: ReLU
+layer2.2.act1: ReLU
+layer2.2.act2: ReLU
+layer2.2.act3: ReLU
+layer2.3.act1: ReLU
+layer2.3.act2: ReLU
+layer2.3.act3: ReLU
+layer3.0.act1: ReLU
+layer3.0.act2: ReLU
+layer3.0.act3: ReLU
+layer3.1.act1: ReLU
+layer3.1.act2: ReLU
+layer3.1.act3: ReLU
+layer3.2.act1: ReLU
+layer3.2.act2: ReLU
+layer3.2.act3: ReLU
+layer3.3.act1: ReLU
+layer3.3.act2: ReLU
+layer3.3.act3: ReLU
+layer3.4.act1: ReLU
+layer3.4.act2: ReLU
+layer3.4.act3: ReLU
+layer3.5.act1: ReLU
+layer3.5.act2: ReLU
+layer3.5.act3: ReLU
+layer4.0.act1: ReLU
+layer4.0.act2: ReLU
+layer4.0.act3: ReLU
+layer4.1.act1: ReLU
+layer4.1.act2: ReLU
+layer4.1.act3: ReLU
+layer4.2.act1: ReLU
+layer4.2.act2: ChannelwiseActivation
+layer4.2.act3: ReLU
 
-=== act13_shared_kggen ===
-Total trainable activation parameters: 96
-
-=== stage_act123_shared_kglap ===
-Total trainable activation parameters: 147
-
-=== block_act2_shared_kggen ===
-Total trainable activation parameters: 48
-
-=== stage4_act2only_channelwise_kglap ===
-Total trainable activation parameters: 4608
-
-=== all_act123_channelwise_kglap ===
-Total trainable activation parameters: 68160
-
-=== all_act123_channelwise_prelu ===
-Total trainable activation parameters: 22720
-
-=== all_act123_shared_swishfixed ===
-Total trainable activation parameters: 0
-
-=== all_act123_channelwise_swishlearn ===
-Total trainable activation parameters: 22720
+=== stage4.2_act123_channelwise_kglap ===
+Total trainable activation parameters: 9216
+activation: ReLU
+layer1.0.act1: ReLU
+layer1.0.act2: ReLU
+layer1.0.act3: ReLU
+layer1.1.act1: ReLU
+layer1.1.act2: ReLU
+layer1.1.act3: ReLU
+layer1.2.act1: ReLU
+layer1.2.act2: ReLU
+layer1.2.act3: ReLU
+layer2.0.act1: ReLU
+layer2.0.act2: ReLU
+layer2.0.act3: ReLU
+layer2.1.act1: ReLU
+layer2.1.act2: ReLU
+layer2.1.act3: ReLU
+layer2.2.act1: ReLU
+layer2.2.act2: ReLU
+layer2.2.act3: ReLU
+layer2.3.act1: ReLU
+layer2.3.act2: ReLU
+layer2.3.act3: ReLU
+layer3.0.act1: ReLU
+layer3.0.act2: ReLU
+layer3.0.act3: ReLU
+layer3.1.act1: ReLU
+layer3.1.act2: ReLU
+layer3.1.act3: ReLU
+layer3.2.act1: ReLU
+layer3.2.act2: ReLU
+layer3.2.act3: ReLU
+layer3.3.act1: ReLU
+layer3.3.act2: ReLU
+layer3.3.act3: ReLU
+layer3.4.act1: ReLU
+layer3.4.act2: ReLU
+layer3.4.act3: ReLU
+layer3.5.act1: ReLU
+layer3.5.act2: ReLU
+layer3.5.act3: ReLU
+layer4.0.act1: ReLU
+layer4.0.act2: ReLU
+layer4.0.act3: ReLU
+layer4.1.act1: ReLU
+layer4.1.act2: ReLU
+layer4.1.act3: ReLU
+layer4.2.act1: ChannelwiseActivation
+layer4.2.act2: ChannelwiseActivation
+layer4.2.act3: ChannelwiseActivation

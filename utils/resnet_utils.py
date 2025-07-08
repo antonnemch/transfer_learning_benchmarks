@@ -1,11 +1,27 @@
+import os
+
 import torch
 import torch.nn as nn
-import os
-from models.custom_activations import BaseActivation
-from models.custom_activations import ChannelwiseActivation, CustomActivationPlaceholder
-from models.custom_activations import channel_map
 
-def train_one_epoch(model, dataloader, net_optimizer, device, criterion, epoch, logger=None, act_optimizer=None):
+from models.custom_activations import (
+    BaseActivation,
+    ChannelwiseActivation,
+    CustomActivationPlaceholder,
+    channel_map,
+)
+
+
+def train_one_epoch(
+    model,
+    dataloader,
+    net_optimizer,
+    device,
+    criterion,
+    epoch,
+    logger=None,
+    act_optimizer=None,
+    modifiers=None,
+):
     model.train()
     total_loss = 0.0
     correct = 0
@@ -19,7 +35,7 @@ def train_one_epoch(model, dataloader, net_optimizer, device, criterion, epoch, 
             if not param.requires_grad:
                 continue
             # Check if parameter belongs to a BaseActivation module
-            module_names = name.split('.')[:-1]
+            module_names = name.split(".")[:-1]
             mod = model
             for mn in module_names:
                 if hasattr(mod, mn):
@@ -36,6 +52,21 @@ def train_one_epoch(model, dataloader, net_optimizer, device, criterion, epoch, 
         images, labels = images.to(device), labels.to(device)
         outputs = model(images)
         loss = criterion(outputs, labels)
+
+        # Add L2 regularization if enabled and strength is set
+        reg_strength = None
+        if modifiers is not None:
+            reg_strength = modifiers.get("Regularization", None)
+        if (
+            reg_strength is not None
+            and isinstance(reg_strength, float)
+            and reg_strength > 0
+        ):
+            reg_loss = 0.0
+            for param in model.parameters():
+                if param.requires_grad:
+                    reg_loss = reg_loss + torch.norm(param, p=2)
+            loss = loss + reg_strength * reg_loss  # L2 regularization
 
         if act_optimizer is not None:
             net_optimizer.zero_grad()
@@ -74,7 +105,10 @@ def train_one_epoch(model, dataloader, net_optimizer, device, criterion, epoch, 
     print(f"Train Loss: {avg_loss:.4f}, Accuracy: {accuracy:.4f}")
     return avg_loss, accuracy
 
-def evaluate_model(model, dataloader, device, criterion=None, logger=None, epoch=None, phase="val"):
+
+def evaluate_model(
+    model, dataloader, device, criterion=None, logger=None, epoch=None, phase="val"
+):
     model.eval()
     correct = 0
     total = 0
@@ -88,7 +122,9 @@ def evaluate_model(model, dataloader, device, criterion=None, logger=None, epoch
     per_image_tumor_correct = []
 
     # Try to get filenames if possible (for ImageFolder-based datasets)
-    has_filenames = hasattr(dataloader.dataset, 'dataset') and hasattr(dataloader.dataset.dataset, 'samples')
+    has_filenames = hasattr(dataloader.dataset, "dataset") and hasattr(
+        dataloader.dataset.dataset, "samples"
+    )
     if has_filenames:
         # Subset -> ImageFolder
         all_samples = dataloader.dataset.dataset.samples
@@ -125,13 +161,23 @@ def evaluate_model(model, dataloader, device, criterion=None, logger=None, epoch
                         img_filename = "N/A"
                     actual_idx = labels[i].item()
                     pred_idx = preds[i].item()
-                    actual_class = dataloader.dataset.classes[actual_idx] if hasattr(dataloader.dataset, 'classes') else str(actual_idx)
-                    predicted_class = dataloader.dataset.classes[pred_idx] if hasattr(dataloader.dataset, 'classes') else str(pred_idx)
+                    actual_class = (
+                        dataloader.dataset.classes[actual_idx]
+                        if hasattr(dataloader.dataset, "classes")
+                        else str(actual_idx)
+                    )
+                    predicted_class = (
+                        dataloader.dataset.classes[pred_idx]
+                        if hasattr(dataloader.dataset, "classes")
+                        else str(pred_idx)
+                    )
                     prediction_confidence = confidences[i]
                     is_correct = int(actual_idx == pred_idx)
                     # Tumor correct logic
                     tumor_correct = None
-                    if hasattr(dataloader.dataset, 'tumor_classes') and hasattr(dataloader.dataset, 'notumor_class'):
+                    if hasattr(dataloader.dataset, "tumor_classes") and hasattr(
+                        dataloader.dataset, "notumor_class"
+                    ):
                         tumor_classes = dataloader.dataset.tumor_classes
                         notumor_class = dataloader.dataset.notumor_class
                         if tumor_classes and notumor_class:
@@ -147,15 +193,19 @@ def evaluate_model(model, dataloader, device, criterion=None, logger=None, epoch
                         prediction_confidence=prediction_confidence,
                         correct=is_correct,
                         tumor_correct=tumor_correct,
-                        probs=probs
+                        probs=probs,
                     )
 
     acc = correct / total
     avg_loss = total_loss / total if criterion is not None else None
 
-    class_names = dataloader.dataset.classes if hasattr(dataloader.dataset, 'classes') else None
+    class_names = (
+        dataloader.dataset.classes if hasattr(dataloader.dataset, "classes") else None
+    )
     if logger is not None and class_names is not None:
-        logger.log_confusion_matrix(y_true, y_pred, class_names, epoch=epoch if phase == "val" else None)
+        logger.log_confusion_matrix(
+            y_true, y_pred, class_names, epoch=epoch if phase == "val" else None
+        )
         print(f"Confusion matrix logged for {phase} phase.")
 
     return (avg_loss, acc) if phase != "test" else acc
@@ -163,6 +213,7 @@ def evaluate_model(model, dataloader, device, criterion=None, logger=None, epoch
 
 # Prints the number of trainable and frozen parameters in a model,
 # including breakdown by top-level module
+
 
 def count_parameters(model):
     total = sum(p.numel() for p in model.parameters())
@@ -175,19 +226,27 @@ def count_parameters(model):
     print(f"Frozen ratio:         {frozen / total:.2%}")
     return total, trainable, frozen
 
+
 def count_parameters_by_module(model):
     print("\n--- Parameter breakdown by module ---")
     for name, module in model.named_children():
         module_total = sum(p.numel() for p in module.parameters())
-        module_trainable = sum(p.numel() for p in module.parameters() if p.requires_grad)
-        module_frozen = sum(p.numel() for p in module.parameters() if p.requires_grad == False)
-        print(f"{name:20} | total: {module_total:,} | trainable: {module_trainable:,} | frozen: {module_frozen:,}")
+        module_trainable = sum(
+            p.numel() for p in module.parameters() if p.requires_grad
+        )
+        module_frozen = sum(
+            p.numel() for p in module.parameters() if p.requires_grad == False
+        )
+        print(
+            f"{name:20} | total: {module_total:,} | trainable: {module_trainable:,} | frozen: {module_frozen:,}"
+        )
+
 
 class EarlyStopping:
     def __init__(self, patience=5, min_delta=0.001):
         self.patience = patience
         self.min_delta = min_delta
-        self.best_val = float('inf')
+        self.best_val = float("inf")
         self.counter = 0
 
     def step(self, val_loss):
@@ -198,9 +257,11 @@ class EarlyStopping:
         else:
             self.counter += 1
             return self.counter >= self.patience
-        
 
-def train_one_epoch_spline(model, dataloader, optimizers, device, criterion, epoch, logger=None):
+
+def train_one_epoch_spline(
+    model, dataloader, optimizers, device, criterion, epoch, logger=None
+):
     model.train()
     total_loss = 0.0
     correct = 0
@@ -236,7 +297,10 @@ def train_one_epoch_spline(model, dataloader, optimizers, device, criterion, epo
     print(f"Train Loss: {avg_loss:.4f}, Accuracy: {accuracy:.4f}")
     return avg_loss, accuracy
 
-def compute_num_experiments(model_name, run_models = {"GPAF":True}, hyperparams = None, model_param_map = None):
+
+def compute_num_experiments(
+    model_name, run_models={"GPAF": True}, hyperparams=None, model_param_map=None
+):
     # === Precompute total number of configurations across all models ===
     total_experiments = 0
     for model_name, should_run in run_models.items():
@@ -251,10 +315,11 @@ def compute_num_experiments(model_name, run_models = {"GPAF":True}, hyperparams 
 
     return total_experiments
 
+
 def print_model_activations(model):
     for module_name, module in model.named_modules():
         for attr_name in dir(module):
-            if attr_name.startswith('_'):
+            if attr_name.startswith("_"):
                 continue  # skip private attributes
 
             attr_value = getattr(module, attr_name)
@@ -264,21 +329,39 @@ def print_model_activations(model):
                     if isinstance(attr_value, CustomActivationPlaceholder):
                         act_fn = attr_value.act_fn
                         if isinstance(act_fn, nn.Module):
-                            print(f"{module_name}.{attr_name}: CustomActivationPlaceholder -> {act_fn}")
-                            for param_name, param in act_fn.named_parameters(recurse=False):
-                                print(f"  Param {param_name}: {param.detach().cpu().numpy()}")
+                            print(
+                                f"{module_name}.{attr_name}: CustomActivationPlaceholder -> {act_fn}"
+                            )
+                            for param_name, param in act_fn.named_parameters(
+                                recurse=False
+                            ):
+                                print(
+                                    f"  Param {param_name}: {param.detach().cpu().numpy()}"
+                                )
                         else:
-                            print(f"{module_name}.{attr_name}: CustomActivationPlaceholder -> [UNSET]")
+                            print(
+                                f"{module_name}.{attr_name}: CustomActivationPlaceholder -> [UNSET]"
+                            )
                     elif isinstance(attr_value, ChannelwiseActivation):
-                        print(f"{module_name}.{attr_name}: ChannelwiseActivation with {len(attr_value.activations)} activations")
+                        print(
+                            f"{module_name}.{attr_name}: ChannelwiseActivation with {len(attr_value.activations)} activations"
+                        )
                         for i, sub_act in enumerate(attr_value.activations):
                             print(f"  Channel {i}: {sub_act}")
-                            for param_name, param in sub_act.named_parameters(recurse=False):
-                                print(f"    Param {param_name}: {param.detach().cpu().numpy()}")
+                            for param_name, param in sub_act.named_parameters(
+                                recurse=False
+                            ):
+                                print(
+                                    f"    Param {param_name}: {param.detach().cpu().numpy()}"
+                                )
                     else:
                         print(f"{module_name}.{attr_name}: {attr_value}")
-                        for param_name, param in attr_value.named_parameters(recurse=False):
-                            print(f"  Param {param_name}: {param.detach().cpu().numpy()}")
+                        for param_name, param in attr_value.named_parameters(
+                            recurse=False
+                        ):
+                            print(
+                                f"  Param {param_name}: {param.detach().cpu().numpy()}"
+                            )
 
 
 def build_activation_map(custom_config):
@@ -303,22 +386,26 @@ def build_activation_map(custom_config):
     for name, channels in channel_map.items():
         if name in custom_config:
             config = custom_config[name]
-            act_type = config['type']
-            mode = config['mode']
+            act_type = config["type"]
+            mode = config["mode"]
 
-            if mode == 'shared':
+            if mode == "shared":
                 # Determine group key: shared_group if provided, else the type itself
-                group_key = config.get('shared_group', act_type)
+                group_key = config.get("shared_group", act_type)
 
                 if group_key not in shared_instances:
                     shared_instances[group_key] = act_type()
-                    print(f"Created shared activation for group '{group_key}' at {name}")
+                    print(
+                        f"Created shared activation for group '{group_key}' at {name}"
+                    )
 
                 activation_map[name] = shared_instances[group_key]
 
-            elif mode == 'channelwise':
-                activation_map[name] = ChannelwiseActivation([act_type() for _ in range(channels)])
-                #print(f"Created channelwise activation at {name} with {channels} channels")
+            elif mode == "channelwise":
+                activation_map[name] = ChannelwiseActivation(
+                    [act_type() for _ in range(channels)]
+                )
+                # print(f"Created channelwise activation at {name} with {channels} channels")
 
             else:
                 raise ValueError(f"Unknown mode '{mode}' for {name}")
@@ -329,9 +416,13 @@ def build_activation_map(custom_config):
 
     return activation_map
 
+
 def print_activation_map(activation_map):
     for name, act in activation_map.items():
         if isinstance(act, ChannelwiseActivation):
             print(f"{name}: ChannelwiseActivation with {len(act.activations)} channels")
         else:
             print(f"{name}: {type(act).__name__}")
+
+
+# L2 regularization (weight decay) penalizes large weights by adding the sum of squared weights to the loss function, scaled by a configurable strength. This helps prevent overfitting by discouraging overly complex models. The regularization strength can be set in the 'modifiers' dictionary as a float value for the 'Regularization' key. If set to None or not provided, no regularization is applied.
