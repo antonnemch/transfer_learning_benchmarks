@@ -56,7 +56,6 @@ def train_GPAF(
     else:
         activation_optimizer = None
 
-    early_stopper = EarlyStopping(patience=3)  # Early stopping instance
 
     activation_map = build_activation_map(activations[activation_type])
 
@@ -68,6 +67,7 @@ def train_GPAF(
         model.set_custom_activation_map(activation_map, train_bn=train_bn)
         activation_map_set = True
         logger.log_param_counts(model)
+        early_stopper = EarlyStopping(patience=3)  # Early stopping instance
     else:
         activation_map_set = False
         print(f"Deferring activation map set for {deferred_epochs} epochs.")
@@ -87,6 +87,7 @@ def train_GPAF(
             print(
                 f"Custom activation map set at epoch {epoch+1} (deferred {deferred_epochs} epochs)"
             )
+            early_stopper = EarlyStopping(patience=3)  # Early stopping instance
             logger.log_param_counts(model)
             activation_map_set = True
         start = time.time()
