@@ -3,13 +3,12 @@
 # -------------------------
 # Base ResNet-50 with optional adapter injection and encoder freezing
 
-import copy
-
 import torch
 import torch.nn as nn
 import torch.utils.model_zoo as model_zoo
-
+import copy
 from .custom_activations import BaseActivation, CustomActivationPlaceholder
+
 
 try:
     from lora_layers import Conv2d  # LoRA-enhanced convolution
@@ -21,97 +20,45 @@ DEFAULT_LORA_CONFIG = {
     "r": 16,
     "lora_alpha": 32,
     "lora_dropout": 0.0,
-    "merge_weights": True,
+    "merge_weights": True
 }
 
-
-def conv3x3(
-    in_planes,
-    out_planes,
-    stride=1,
-    groups=1,
-    dilation=1,
-    is_lora=False,
-    lora_config=None,
-):
+def conv3x3(in_planes, out_planes, stride=1, groups=1, dilation=1, is_lora=False, lora_config=None):
     if is_lora and Conv2d:
-        return Conv2d(
-            in_planes,
-            out_planes,
-            kernel_size=3,
-            stride=stride,
-            padding=dilation,
-            groups=groups,
-            dilation=dilation,
-            bias=False,
-            lora_config=lora_config,
-        )
+        return Conv2d(in_planes, out_planes, kernel_size=3, stride=stride, padding=dilation,
+                      groups=groups, dilation=dilation, bias=False, lora_config=lora_config)
     else:
-        return nn.Conv2d(
-            in_planes,
-            out_planes,
-            kernel_size=3,
-            stride=stride,
-            padding=dilation,
-            groups=groups,
-            dilation=dilation,
-            bias=False,
-        )
+        return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
+                         padding=dilation, groups=groups, dilation=dilation, bias=False)
 
 
 def conv1x1(in_planes, out_planes, stride=1, is_lora=False, lora_config=None):
     if is_lora and Conv2d:
-        return Conv2d(
-            in_planes,
-            out_planes,
-            kernel_size=1,
-            stride=stride,
-            bias=False,
-            lora_config=lora_config,
-        )
+        return Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False, lora_config=lora_config)
     else:
-        return nn.Conv2d(
-            in_planes, out_planes, kernel_size=1, stride=stride, bias=False
-        )
+        return nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False)
 
+__all__ = ['resnet50_base', 'ResNet', 'Bottleneck', 'add_adapters_to_resnet', 'freeze_encoder']
 
-__all__ = [
-    "resnet50_base",
-    "ResNet",
-    "Bottleneck",
-    "add_adapters_to_resnet",
-    "freeze_encoder",
-]
-
-model_urls = {"resnet50": "https://download.pytorch.org/models/resnet50-0676ba61.pth"}
+model_urls = {
+    'resnet50': 'https://download.pytorch.org/models/resnet50-0676ba61.pth'
+}
 
 
 class Bottleneck(nn.Module):
     expansion = 4
 
-    def __init__(
-        self,
-        inplanes,
-        planes,
-        stride=1,
-        downsample=None,
-        is_lora=False,
-        lora_config=None,
-    ):
+    def __init__(self, inplanes, planes, stride=1, downsample=None, is_lora=False, lora_config=None):
         super().__init__()
         self.conv1 = conv1x1(inplanes, planes, is_lora=is_lora, lora_config=lora_config)
         self.bn1 = nn.BatchNorm2d(planes)
-        self.conv2 = conv3x3(
-            planes, planes, stride=stride, is_lora=is_lora, lora_config=lora_config
-        )
+        self.conv2 = conv3x3(planes, planes, stride=stride, is_lora=is_lora, lora_config=lora_config)
         self.bn2 = nn.BatchNorm2d(planes)
-        self.conv3 = conv1x1(
-            planes, planes * self.expansion, is_lora=is_lora, lora_config=lora_config
-        )
+        self.conv3 = conv1x1(planes, planes * self.expansion, is_lora=is_lora, lora_config=lora_config)
         self.bn3 = nn.BatchNorm2d(planes * self.expansion)
         self.act1 = CustomActivationPlaceholder()
         self.act2 = CustomActivationPlaceholder()
-        self.act3 = CustomActivationPlaceholder()
+        self.act3 = CustomActivationPlaceholder()        
         self.downsample = downsample
         self.adapter = None
         self.adapter_in_channels = planes
@@ -147,12 +94,9 @@ class Bottleneck(nn.Module):
         out += identity
         out = self.act3(out)
         return out
-
-
+    
 class ResNet(nn.Module):
-    def __init__(
-        self, block, layers, num_classes=1000, is_lora=False, lora_config=None
-    ):
+    def __init__(self, block, layers, num_classes=1000, is_lora=False, lora_config=None):
         super().__init__()
         self.lora_config = lora_config or DEFAULT_LORA_CONFIG
         self.inplanes = 64
@@ -161,48 +105,35 @@ class ResNet(nn.Module):
         self.activation = CustomActivationPlaceholder()
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
 
-        self.layer1 = self._make_layer(
-            block, 64, layers[0], is_lora=is_lora, lora_config=lora_config
-        )
-        self.layer2 = self._make_layer(
-            block, 128, layers[1], stride=2, is_lora=is_lora, lora_config=lora_config
-        )
-        self.layer3 = self._make_layer(
-            block, 256, layers[2], stride=2, is_lora=is_lora, lora_config=lora_config
-        )
-        self.layer4 = self._make_layer(
-            block, 512, layers[3], stride=2, is_lora=is_lora, lora_config=lora_config
-        )
+        self.layer1 = self._make_layer(block, 64, layers[0], is_lora=is_lora, lora_config=lora_config)
+        self.layer2 = self._make_layer(block, 128, layers[1], stride=2, is_lora=is_lora, lora_config=lora_config)
+        self.layer3 = self._make_layer(block, 256, layers[2], stride=2, is_lora=is_lora, lora_config=lora_config)
+        self.layer4 = self._make_layer(block, 512, layers[3], stride=2, is_lora=is_lora, lora_config=lora_config)
 
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.fc = nn.Linear(512 * block.expansion, num_classes)
 
-    def _make_layer(
-        self, block, planes, blocks, stride=1, is_lora=False, lora_config=None
-    ):
+    def _make_layer(self, block, planes, blocks, stride=1, is_lora=False, lora_config=None):
         downsample = None
         if stride != 1 or self.inplanes != planes * block.expansion:
             downsample = nn.Sequential(
-                conv1x1(
-                    self.inplanes, planes * block.expansion, stride, is_lora=is_lora
-                ),
-                nn.BatchNorm2d(planes * block.expansion),
+                conv1x1(self.inplanes, planes * block.expansion, stride, is_lora=is_lora),
+                nn.BatchNorm2d(planes * block.expansion)
             )
 
         layers = []
         for i in range(blocks):
-            layers.append(
-                block(
-                    self.inplanes if i == 0 else planes * block.expansion,
-                    planes,
-                    stride if i == 0 else 1,
-                    downsample if i == 0 else None,
-                    is_lora=is_lora,
-                    lora_config=lora_config,
-                )
-            )
+            layers.append(block(
+                self.inplanes if i == 0 else planes * block.expansion,
+                planes,
+                stride if i == 0 else 1,
+                downsample if i == 0 else None,
+                is_lora=is_lora,
+                lora_config=lora_config
+            ))
         self.inplanes = planes * block.expansion
         return nn.Sequential(*layers)
+
 
     def forward(self, x):
         x = self.activation(self.bn1(self.conv1(x)))
@@ -215,42 +146,31 @@ class ResNet(nn.Module):
         x = torch.flatten(x, 1)
         x = self.fc(x)
         return x
-
-    def set_custom_activation_map(self, activation_map, train_bn=False):
+    
+    def set_custom_activation_map(self, activation_map):
         # For each CustomActivationPlaceholder in the model, replace with config activation if present, else ReLU
         for module_name, module in self.named_modules():
             if isinstance(module, CustomActivationPlaceholder):
                 parent = self
                 attr_name = module_name
                 # Traverse to parent module if nested
-                if "." in module_name:
-                    parts = module_name.split(".")
+                if '.' in module_name:
+                    parts = module_name.split('.')
                     for p in parts[:-1]:
                         parent = getattr(parent, p)
                     attr_name = parts[-1]
                 # Replace the placeholder with the activation
                 if module_name in activation_map:
                     setattr(parent, attr_name, activation_map[module_name])
+                    #print(f"Set {module_name} -> {activation_map[module_name]}")
                 else:
                     setattr(parent, attr_name, nn.ReLU())
-                # Optionally unfreeze BatchNorm layer that immediately follows this activation
-                if train_bn:
-                    # Find the attribute order in the parent module
-                    attrs = list(parent._modules.keys())
-                    if attr_name in attrs:
-                        idx = attrs.index(attr_name)
-                        # Look for the next attribute that is a BatchNorm layer
-                        for next_attr in attrs[idx + 1 :]:
-                            next_mod = getattr(parent, next_attr)
-                            if isinstance(next_mod, nn.BatchNorm2d):
-                                for param in next_mod.parameters():
-                                    param.requires_grad = True
-                                # print(f"Unfroze BatchNorm layer '{next_attr}' after activation '{attr_name}' in '{module_name}'")
-                                break
+                    #print(f"Defaulted {module_name} to ReLU")
+
 
     def load_weight_lora(self, state_dict):
-        if "model_state_dict" in state_dict:
-            state_dict = state_dict["model_state_dict"]
+        if 'model_state_dict' in state_dict:
+            state_dict = state_dict['model_state_dict']
         state_dict_tmp = copy.deepcopy(state_dict)
 
         remap = {}
@@ -268,9 +188,7 @@ class ResNet(nn.Module):
             elif "conv3.bias" in key:
                 remap[key] = key.replace("conv3.bias", "conv3.conv.bias")
             elif "downsample.0.weight" in key:
-                remap[key] = key.replace(
-                    "downsample.0.weight", "downsample.0.conv.weight"
-                )
+                remap[key] = key.replace("downsample.0.weight", "downsample.0.conv.weight")
 
         for old_key, new_key in remap.items():
             state_dict_tmp[new_key] = state_dict_tmp.pop(old_key)
@@ -283,30 +201,20 @@ class ResNet(nn.Module):
 
         self.load_state_dict(state_dict_tmp, strict=False)
 
-
 def freeze_non_activation_params(model):
     for name, module in model.named_modules():
         if isinstance(module, BaseActivation):
-            # print(f"Leaving activation parameters unfrozen in: {name}")
+            #print(f"Leaving activation parameters unfrozen in: {name}")
             continue
-        if isinstance(module, nn.Linear) and name == "fc":
+        if isinstance(module, nn.Linear) and name == 'fc':
             continue
         for _, param in module.named_parameters(recurse=False):
             param.requires_grad = False
 
-
-def resnet50_base(
-    pretrained=True, num_classes=1000, is_lora=False, lora_config=None, freeze=False
-):
-    model = ResNet(
-        Bottleneck,
-        [3, 4, 6, 3],
-        num_classes=num_classes,
-        is_lora=is_lora,
-        lora_config=lora_config,
-    )
+def resnet50_base(pretrained=True, num_classes=1000, is_lora=False,  lora_config=None,freeze=False):
+    model = ResNet(Bottleneck, [3, 4, 6, 3], num_classes=num_classes, is_lora=is_lora, lora_config=lora_config)
     if pretrained:
-        state_dict = model_zoo.load_url(model_urls["resnet50"])
+        state_dict = model_zoo.load_url(model_urls['resnet50'])
         # Remove fc weights if shape mismatch is expected
         state_dict.pop("fc.weight", None)
         state_dict.pop("fc.bias", None)
@@ -319,9 +227,7 @@ def resnet50_base(
     return model
 
 
-def initialize_basic_model(num_classes, device, freeze=False):
-    model = resnet50_base(
-        pretrained=True, num_classes=num_classes, is_lora=False, freeze=freeze
-    )
+def initialize_basic_model(num_classes, device,freeze=False):
+    model = resnet50_base(pretrained=True, num_classes=num_classes,is_lora=False,freeze=freeze)
     model.to(device)
     return model
