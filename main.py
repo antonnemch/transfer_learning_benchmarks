@@ -199,6 +199,9 @@ total_configs = len(model_param_combinations)
 for i, config in enumerate(model_param_combinations):
     config['seed'] = 42
     exp_i += 1 
+    if exp_i <88:
+        continue
+    
     print(f"\n[{model_name.upper()}] (Exp. {exp_i}/{total_experiments}) Config {i+1}/{total_configs}: {config}")
 
     train_loader, val_loader, test_loader, num_classes = load_kaggle_brain_mri(
