@@ -228,24 +228,24 @@ class ResNet(nn.Module):
                     for p in parts[:-1]:
                         parent = getattr(parent, p)
                     attr_name = parts[-1]
-                # Replace the placeholder with the activation
+                # Replace the placeholder with the activation, and only unfreeze BN if activation is custom (not ReLU)
                 if module_name in activation_map:
-                    setattr(parent, attr_name, activation_map[module_name])
+                    new_act = activation_map[module_name]
                 else:
-                    setattr(parent, attr_name, nn.ReLU())
-                # Optionally unfreeze BatchNorm layer that immediately follows this activation
-                if train_bn:
-                    # Find the attribute order in the parent module
+                    new_act = nn.ReLU()
+                setattr(parent, attr_name, new_act)
+                # Only unfreeze BatchNorm if the activation is NOT a plain nn.ReLU
+                if train_bn and not (isinstance(new_act, nn.ReLU) and type(new_act) is nn.ReLU):
                     attrs = list(parent._modules.keys())
                     if attr_name in attrs:
                         idx = attrs.index(attr_name)
-                        # Look for the next attribute that is a BatchNorm layer
-                        for next_attr in attrs[idx + 1 :]:
-                            next_mod = getattr(parent, next_attr)
-                            if isinstance(next_mod, nn.BatchNorm2d):
-                                for param in next_mod.parameters():
+                        # Look for the previous attribute that is a BatchNorm layer
+                        for prev_attr in reversed(attrs[:idx]):
+                            prev_mod = getattr(parent, prev_attr)
+                            if isinstance(prev_mod, nn.BatchNorm2d):
+                                for param in prev_mod.parameters():
                                     param.requires_grad = True
-                                # print(f"Unfroze BatchNorm layer '{next_attr}' after activation '{attr_name}' in '{module_name}'")
+                                # print(f"Unfroze BatchNorm layer '{prev_attr}' before activation '{attr_name}' in '{module_name}'")
                                 break
 
     def load_weight_lora(self, state_dict):

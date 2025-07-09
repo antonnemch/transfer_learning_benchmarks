@@ -130,7 +130,7 @@ class ExcelTrainingLogger:
 
     def save(self):
         self.compute_and_store_metrics()
-        self.compute_and_store_final_results()  # NEW: compute final results before saving
+        self.compute_and_store_final_results()  # Ensure final_results is up to date
 
         mode = "a" if os.path.exists(self.path) else "w"
         writer_args = {
@@ -151,8 +151,12 @@ class ExcelTrainingLogger:
             self._append_to_sheet(writer, "Metrics", self.metrics)
             if self.test_image_rows:
                 self._append_to_sheet(writer, "Test set by Image", self.test_image_rows)
+            # Always write Final results sheet, even if empty
             if hasattr(self, "final_results") and self.final_results is not None:
-                self._append_to_sheet(writer, "Final results", self.final_results)
+                self._append_to_sheet(writer, "Final Results", self.final_results)
+            else:
+                # Write empty sheet if not present
+                pd.DataFrame().to_excel(writer, sheet_name="Final Results", index=False)
             if self.model_path:
                 pd.DataFrame([{
                     "config_id": self.config_id,
@@ -221,7 +225,11 @@ class ExcelTrainingLogger:
         self.metrics = metrics_rows
 
     def compute_and_store_final_results(self):
-        # Only run if test_image_rows and epoch_metrics exist
+        # Debug: print why final_results may be empty
+        if not self.test_image_rows:
+            print(f"[LOGGER DEBUG] No test_image_rows for config_id {self.config_id}. Final Results will be empty.")
+        if not self.epoch_metrics:
+            print(f"[LOGGER DEBUG] No epoch_metrics for config_id {self.config_id}. Final Results will be empty.")
         if not self.test_image_rows or not self.epoch_metrics:
             self.final_results = None
             return

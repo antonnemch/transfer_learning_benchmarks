@@ -114,12 +114,6 @@ def evaluate_model(
     total = 0
     total_loss = 0.0
     y_true, y_pred = [], []
-    per_image_filenames = []
-    per_image_actuals = []
-    per_image_preds = []
-    per_image_confs = []
-    per_image_correct = []
-    per_image_tumor_correct = []
 
     # Try to get filenames if possible (for ImageFolder-based datasets)
     has_filenames = hasattr(dataloader.dataset, "dataset") and hasattr(

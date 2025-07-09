@@ -1,10 +1,10 @@
 #!/bin/bash
-#SBATCH --job-name=cnn_gridsearch
+#SBATCH --job-name=cnn_benchmark
 #SBATCH --account=def-emohamme
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=16G
-#SBATCH --time=10:00:00
+#SBATCH --mem=32G
+#SBATCH --time=48:00:00
 #SBATCH --output=logs/%x-%j.out
 #SBATCH --mail-user=nemc5377@mylaurier.ca
 #SBATCH --mail-type=ALL
@@ -27,4 +27,4 @@ export PYTHONPATH=$PYTHONPATH:$(pwd)
 echo "CWD: $(pwd)"
 ls -l
 
-python -u main.py
+python -u benchmark.py
