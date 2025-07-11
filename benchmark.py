@@ -61,29 +61,34 @@ excel_log_path = os.path.join("logs", f"UNIFIED_RESULTS_{timestamp}.xlsx")
 os.makedirs("logs", exist_ok=True)
 total_experiments = compute_total_experiments(hyperparams, model_param_map)
 exp_i = 0
+
 for model_name in ['GPAF', 'ConvAdapter', 'LoRA']:
     configs = get_model_param_combinations(model_name, model_param_map, hyperparams)
     for config in configs:
         exp_i += 1
-        # Add model name to config dict for logging
         config_with_model = dict(config)
         config_with_model['model'] = model_name
         print(f"\n[{model_name}] (Exp. {exp_i}/{total_experiments}) Config: {config_with_model}")
-        train_loader, val_loader, test_loader, num_classes = load_kaggle_brain_mri(
-            os.path.join('datasets', 'Kaggle Brain MRI'),
-            batch_size=config['batch_size'],
-            subset_fraction=config['data_subset']
-        )
-        dataset_summary = summarize_log("Kaggle Brain MRI", train_loader, val_loader, test_loader, num_classes)
-        logger = make_logger("UNIFIED", config=config_with_model, timestamp=timestamp, base_dir="logs")
-        logger.log_dataset_summary(dataset_summary)
-        logger.log_hyperparams()
-        if model_name == "GPAF":
-            train_gpaf(config_with_model, train_loader, val_loader, test_loader, num_classes, dataset_summary, logger,device)
-        elif model_name == "ConvAdapter":
-            train_conv_adapter(config_with_model, train_loader, val_loader, test_loader, num_classes, dataset_summary, logger, device)
-        elif model_name == "LoRA":
-            train_lora(config_with_model, train_loader, val_loader, test_loader, num_classes, dataset_summary, logger, device)
-        logger.save()
+        try:
+            train_loader, val_loader, test_loader, num_classes = load_kaggle_brain_mri(
+                os.path.join('datasets', 'Kaggle Brain MRI'),
+                batch_size=config['batch_size'],
+                subset_fraction=config['data_subset']
+            )
+            dataset_summary = summarize_log("Kaggle Brain MRI", train_loader, val_loader, test_loader, num_classes)
+            logger = make_logger("UNIFIED", config=config_with_model, timestamp=timestamp, base_dir="logs")
+            logger.log_dataset_summary(dataset_summary)
+            logger.log_hyperparams()
+            if model_name == "GPAF":
+                train_gpaf(config_with_model, train_loader, val_loader, test_loader, num_classes, dataset_summary, logger, device)
+            elif model_name == "ConvAdapter":
+                train_conv_adapter(config_with_model, train_loader, val_loader, test_loader, num_classes, dataset_summary, logger, device)
+            elif model_name == "LoRA":
+                train_lora(config_with_model, train_loader, val_loader, test_loader, num_classes, dataset_summary, logger, device)
+            logger.save()
+        except Exception as e:
+            print(f"[ERROR][{model_name}][Exp. {exp_i}/{total_experiments}] {e}")
+            import traceback
+            traceback.print_exc()
 
 print(f"\nAll experiments complete. Results saved to {excel_log_path}")

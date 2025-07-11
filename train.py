@@ -31,7 +31,7 @@ def train_gpaf(config, train_loader, val_loader, test_loader, num_classes, datas
     deferred_epochs = modifiers.get('Deferred', None)
     train_bn = modifiers.get('TrainBN', False)
     # Always initialize early_stopper before training loop
-    early_stopper = EarlyStopping(patience=3)
+    early_stopper = EarlyStopping(patience=5)
     if deferred_epochs is None or deferred_epochs == 0:
         model.set_custom_activation_map(activation_map, train_bn=train_bn)
         activation_map_set = True
@@ -43,6 +43,7 @@ def train_gpaf(config, train_loader, val_loader, test_loader, num_classes, datas
     best_val_acc = -float("inf")
     best_model_state = None
     best_epoch = -1
+    early_stop_pending = False
     for epoch in range(config['num_epochs']):
         try:
             # Set activation map if deferred and epoch reached
@@ -55,9 +56,12 @@ def train_gpaf(config, train_loader, val_loader, test_loader, num_classes, datas
                 print(
                     f"Custom activation map set at epoch {epoch+1} (deferred {deferred_epochs} epochs)"
                 )
-                early_stopper = EarlyStopping(patience=3)
+                early_stopper = EarlyStopping(patience=5)
                 logger.log_param_counts(model)
                 activation_map_set = True
+                # If early stopping was pending, allow at least one more epoch after activation map is set
+                if early_stop_pending:
+                    early_stop_pending = False
             start = time.time()
             # Training step
             train_loss, acc = train_one_epoch(
@@ -90,8 +94,13 @@ def train_gpaf(config, train_loader, val_loader, test_loader, num_classes, datas
                 best_epoch = epoch
             # Early stopping check
             if early_stopper.step(val_loss):
-                print(f"Early stopping triggered at epoch {epoch+1}")
-                break
+                if not activation_map_set:
+                    # Defer early stopping until after activation map is set
+                    print(f"Early stopping triggered at epoch {epoch+1}, but activation map not set yet. Continuing until after activation map is set.")
+                    early_stop_pending = True
+                else:
+                    print(f"Early stopping triggered at epoch {epoch+1}")
+                    break
         except Exception as e:
             print(f"[ERROR][GPAF][Epoch {epoch+1}] {e}")
             import traceback
@@ -131,7 +140,7 @@ def train_conv_adapter(config, train_loader, val_loader, test_loader, num_classe
     os.makedirs(os.path.join("saved_models"), exist_ok=True)
     model = initialize_conv_model(num_classes, device, reduction=config['reduction'])
     optimizer = optim.Adam(model.parameters(), lr=config['net_lr'])
-    early_stopper = EarlyStopping(patience=3)
+    early_stopper = EarlyStopping(patience=5)
     logger.log_param_counts(model)
     print("\n=== Training with ConvAdapter ===")
     best_val_acc = -float("inf")
